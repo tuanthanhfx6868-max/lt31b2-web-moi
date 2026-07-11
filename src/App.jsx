@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -23,8 +23,8 @@ const T = {
   inkSoft: "#5B5F52",
 };
 
-const UNIT_PASSWORD = "LT31B2"; // Mật khẩu chung cho thành viên — lớp trưởng đổi tại đây
-const ADMIN_PASSWORD = "LT31ADMIN"; // Mật khẩu riêng cho quản trị — chỉ người quản trị được biết, đổi tại đây
+const UNIT_PASSWORD_DEFAULT = "LT31B2"; // Mật khẩu chung mặc định — có thể đổi ngay trên web ở mục "Đổi mật khẩu"
+const ADMIN_PASSWORD_DEFAULT = "LT31ADMIN"; // Mật khẩu quản trị mặc định — có thể đổi ngay trên web ở mục "Đổi mật khẩu"
 
 /* ============ PHÂN QUYỀN ============
    admin      : đăng nhập bằng ADMIN_PASSWORD — toàn quyền, kể cả gán quyền cho người khác
@@ -248,6 +248,48 @@ function useSharedList(key) {
   return { items, setItems: persist, loading, error, reload: () => {} };
 }
 
+function useAuthConfig() {
+  const [config, setConfigState] = useState({ unitPassword: UNIT_PASSWORD_DEFAULT, adminPassword: ADMIN_PASSWORD_DEFAULT });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const ref = doc(db, "lt31b2", "authConfig");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data().value) {
+          try {
+            const parsed = JSON.parse(snap.data().value);
+            setConfigState({
+              unitPassword: parsed.unitPassword || UNIT_PASSWORD_DEFAULT,
+              adminPassword: parsed.adminPassword || ADMIN_PASSWORD_DEFAULT,
+            });
+          } catch (e) {
+            // giữ mặc định nếu dữ liệu lỗi
+          }
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, []);
+
+  const update = async (next) => {
+    setConfigState(next);
+    try {
+      await setDoc(doc(db, "lt31b2", "authConfig"), { value: JSON.stringify(next) });
+      return true;
+    } catch (e) {
+      const msg = `Đổi mật khẩu thất bại — ${e?.code || ""} ${e?.message || e}`;
+      reportGlobalError(msg);
+      return false;
+    }
+  };
+
+  return { config, setConfig: update, loading };
+}
+
 function useRole(user, isAdminLogin) {
   const { items: permissions, setItems: setPermissions, loading: permLoading } = useSharedList("permissions");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
@@ -318,6 +360,23 @@ function LoadingRow() {
   return <div className="flex items-center gap-2 f-body text-sm py-6" style={{ color: T.inkSoft }}><Loader2 size={16} className="animate-spin" /> Đang tải dữ liệu…</div>;
 }
 
+/* ============ THẢ TIM (dùng chung cho Thông báo & Bảng tin) ============ */
+function ReactionBar({ reactions = [], user, onToggle }) {
+  const mine = reactions.includes(user);
+  return (
+    <button
+      onClick={onToggle}
+      type="button"
+      className="flex items-center gap-1.5 mt-2 f-body text-xs btn-press"
+      style={{ color: mine ? T.red : T.inkSoft }}
+      title={reactions.length > 0 ? reactions.join(", ") : "Thả tim"}
+    >
+      <Heart size={14} fill={mine ? T.red : "none"} strokeWidth={2} />
+      {reactions.length > 0 ? reactions.length : "Thích"}
+    </button>
+  );
+}
+
 function EmptyState({ text }) {
   return <div className="f-body text-sm italic py-8 text-center" style={{ color: T.inkSoft }}>{text}</div>;
 }
@@ -325,6 +384,7 @@ function EmptyState({ text }) {
 /* ============ UPLOAD FIELD (tải ảnh/tệp trực tiếp từ máy — dùng Cloudinary) ============ */
 function UploadField({ onUploaded }) {
   const [status, setStatus] = useState("idle"); // idle | uploading | done | error
+  const [errMsg, setErrMsg] = useState("");
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
   const configured = Boolean(cloudName && uploadPreset);
@@ -335,23 +395,29 @@ function UploadField({ onUploaded }) {
     if (!file) return;
     if (!configured) {
       setStatus("error");
+      setErrMsg("Chưa cấu hình Cloudinary (xem README).");
       return;
     }
     setStatus("uploading");
     try {
+      // Ảnh/video dùng đúng loại resource; còn lại (pdf, doc, docx, xlsx…) dùng "raw" —
+      // nếu gửi sai loại, Cloudinary sẽ từ chối các file không phải ảnh/video.
+      const resourceType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "raw";
       const fd = new FormData();
       fd.append("file", file);
       fd.append("upload_preset", uploadPreset);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, { method: "POST", body: fd });
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, { method: "POST", body: fd });
       const data = await res.json();
       if (data.secure_url) {
         onUploaded(data.secure_url);
         setStatus("done");
       } else {
         setStatus("error");
+        setErrMsg(data?.error?.message || "Không rõ nguyên nhân, thử lại.");
       }
     } catch (err) {
       setStatus("error");
+      setErrMsg(String(err?.message || err));
     }
   };
 
@@ -363,7 +429,13 @@ function UploadField({ onUploaded }) {
       >
         {status === "uploading" ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
         {status === "uploading" ? "Đang tải lên…" : "Tải ảnh / tệp từ máy"}
-        <input type="file" accept="image/*,.pdf,.doc,.docx,.xlsx" className="hidden" onChange={handleFile} disabled={status === "uploading"} />
+        <input
+          type="file"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+          className="hidden"
+          onChange={handleFile}
+          disabled={status === "uploading"}
+        />
       </label>
       {status === "done" && (
         <span className="f-body text-xs flex items-center gap-1" style={{ color: T.green }}>
@@ -371,9 +443,7 @@ function UploadField({ onUploaded }) {
         </span>
       )}
       {status === "error" && (
-        <span className="f-body text-xs" style={{ color: T.red }}>
-          {configured ? "Tải lên thất bại, thử lại." : "Chưa cấu hình Cloudinary (xem README)."}
-        </span>
+        <span className="f-body text-xs" style={{ color: T.red }}>{errMsg}</span>
       )}
     </div>
   );
@@ -384,6 +454,7 @@ function LoginGate({ onLogin }) {
   const [pw, setPw] = useState("");
   const [name, setName] = useState("");
   const [err, setErr] = useState("");
+  const { config } = useAuthConfig();
 
   const submit = (e) => {
     e.preventDefault();
@@ -391,11 +462,11 @@ function LoginGate({ onLogin }) {
       setErr("Nhập họ tên của bạn để hệ thống ghi nhận.");
       return;
     }
-    if (pw === ADMIN_PASSWORD) {
+    if (pw === config.adminPassword) {
       onLogin(name.trim(), true);
       return;
     }
-    if (pw !== UNIT_PASSWORD) {
+    if (pw !== config.unitPassword) {
       setErr("Mật khẩu không đúng. Liên hệ lớp trưởng/quản trị để lấy mật khẩu.");
       return;
     }
@@ -499,6 +570,12 @@ function AnnouncementsTab({ user, perm }) {
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const togglePin = async (id) => setItems(items.map((i) => (i.id === id ? { ...i, pinned: !i.pinned } : i)));
+  const toggleReaction = async (id) => setItems(items.map((a) => {
+    if (a.id !== id) return a;
+    const reactions = a.reactions || [];
+    const mine = reactions.includes(user);
+    return { ...a, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
+  }));
   const canDelete = (a) => perm.canManage || perm.isOwner(a.author);
 
   const sorted = [...items].sort((a, b) => (b.pinned - a.pinned) || (new Date(b.date) - new Date(a.date)));
@@ -543,6 +620,7 @@ function AnnouncementsTab({ user, perm }) {
                   </div>
                   <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{a.body}</p>
                   <div className="f-mono text-[11px] mt-2" style={{ color: T.inkSoft }}>{a.author} · {new Date(a.date).toLocaleString("vi-VN")}</div>
+                  <ReactionBar reactions={a.reactions} user={user} onToggle={() => toggleReaction(a.id)} />
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {perm.canManage && <button onClick={() => togglePin(a.id)} title="Ghim"><Star size={16} style={{ color: a.pinned ? T.amberDark : "#C9BFA5" }} /></button>}
@@ -1001,23 +1079,25 @@ function AttendanceTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("attendance");
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
-  const STATUSES = ["Có mặt", "Vắng", "Phép", "Ốm"];
-  const statusColor = { "Có mặt": T.green, "Vắng": T.red, "Phép": T.amberDark, "Ốm": "#7A5C9E" };
+  const STATUSES = ["Có mặt", "Vắng", "Phép", "Không phép", "Ốm"];
+  const statusColor = { "Có mặt": T.green, "Vắng": "#8A8F76", "Phép": T.amberDark, "Không phép": T.red, "Ốm": "#7A5C9E" };
 
   const recordFor = (memberId) => items.find((r) => r.date === date && r.memberId === memberId);
 
   const setStatus = async (member, status) => {
     const existing = recordFor(member.id);
     if (existing) {
-      await setItems(items.map((r) => (r.id === existing.id ? { ...r, status } : r)));
+      await setItems(items.map((r) => (r.id === existing.id ? { ...r, status, by: user } : r)));
     } else {
-      await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status }]);
+      await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status, by: user }]);
     }
   };
 
   const dayRecords = items.filter((r) => r.date === date);
   const total = roster.items.length;
   const coMat = dayRecords.filter((r) => r.status === "Có mặt").length;
+  const summary = STATUSES.map((s) => ({ status: s, count: dayRecords.filter((r) => r.status === s).length }));
+  const chuaDiemDanh = Math.max(0, total - dayRecords.length);
 
   const stats = roster.items.map((m) => {
     const recs = items.filter((r) => r.memberId === m.id);
@@ -1031,6 +1111,21 @@ function AttendanceTab({ user, perm }) {
       <SectionHeader icon={ClipboardCheck} eyebrow={total ? `Có mặt: ${coMat}/${total}` : "Chưa có quân số"} title="Điểm danh hằng ngày"
         action={<input type="date" className={`${inputCls} !w-auto`} style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />} />
 
+      {roster.items.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 mb-6">
+          {summary.map((s) => (
+            <div key={s.status} className="p-3 text-center" style={{ background: "#fff", borderTop: `3px solid ${statusColor[s.status]}` }}>
+              <div className="f-display text-2xl font-semibold" style={{ color: statusColor[s.status] }}>{s.count}</div>
+              <div className="f-mono text-[10px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>{s.status}</div>
+            </div>
+          ))}
+          <div className="p-3 text-center" style={{ background: "#fff", borderTop: `3px solid #C9BFA5` }}>
+            <div className="f-display text-2xl font-semibold" style={{ color: T.inkSoft }}>{chuaDiemDanh}</div>
+            <div className="f-mono text-[10px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>Chưa điểm danh</div>
+          </div>
+        </div>
+      )}
+
       {roster.loading || loading ? <LoadingRow /> : roster.items.length === 0 ? (
         <EmptyState text="Chưa có dữ liệu quân số — vào mục Quân số để thêm thành viên trước." />
       ) : (
@@ -1040,28 +1135,22 @@ function AttendanceTab({ user, perm }) {
             return (
               <div key={m.id} className="flex items-center justify-between gap-3 p-3 flex-wrap" style={{ background: "#fff" }}>
                 <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{m.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· TĐ{m.tieuDoi || "—"}</span></div>
-                {perm.canManage ? (
-                  <div className="flex gap-1.5 flex-wrap">
-                    {STATUSES.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setStatus(m, s)}
-                        className="f-display text-[11px] uppercase tracking-wider px-2.5 py-1 flex items-center gap-1"
-                        style={{
-                          background: rec?.status === s ? statusColor[s] : "transparent",
-                          color: rec?.status === s ? "#fff" : statusColor[s],
-                          border: `1px solid ${statusColor[s]}`,
-                        }}
-                      >
-                        {rec?.status === s ? <CheckCircle2 size={12} /> : <Circle size={12} />} {s}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="f-display text-[11px] uppercase tracking-wider px-2.5 py-1" style={{ color: rec ? statusColor[rec.status] : T.inkSoft, border: `1px solid ${rec ? statusColor[rec.status] : "#C9BFA5"}` }}>
-                    {rec?.status || "Chưa điểm danh"}
-                  </span>
-                )}
+                <div className="flex gap-1.5 flex-wrap">
+                  {STATUSES.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setStatus(m, s)}
+                      className="f-display text-[11px] uppercase tracking-wider px-2.5 py-1 flex items-center gap-1"
+                      style={{
+                        background: rec?.status === s ? statusColor[s] : "transparent",
+                        color: rec?.status === s ? "#fff" : statusColor[s],
+                        border: `1px solid ${statusColor[s]}`,
+                      }}
+                    >
+                      {rec?.status === s ? <CheckCircle2 size={12} /> : <Circle size={12} />} {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             );
           })}
@@ -1472,6 +1561,12 @@ function BoardTab({ user, perm }) {
     setReplyText("");
     setReplyOpen(null);
   };
+  const toggleReaction = async (id) => setItems(items.map((p) => {
+    if (p.id !== id) return p;
+    const reactions = p.reactions || [];
+    const mine = reactions.includes(user);
+    return { ...p, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
+  }));
 
   return (
     <div>
@@ -1494,6 +1589,8 @@ function BoardTab({ user, perm }) {
                 </div>
                 {(perm.canManage || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
               </div>
+
+              <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
 
               {p.replies.length > 0 && (
                 <div className="mt-3 ml-4 pl-3 space-y-2" style={{ borderLeft: `2px solid ${T.paperDark}` }}>
@@ -1526,7 +1623,7 @@ function BoardTab({ user, perm }) {
 const ALL_DATA_KEYS = [
   "announcements", "schedule", "studyAppendix", "checkpoints",
   "outings", "attendance", "docs", "scores",
-  "fund", "posts", "polls", "roster", "permissions",
+  "fund", "posts", "polls", "roster", "permissions", "authConfig",
 ];
 
 function BackupSection() {
@@ -1602,6 +1699,51 @@ function BackupSection() {
         </label>
       </div>
       {status && <div className="f-body text-xs mt-3" style={{ color: T.inkSoft }}>{status}</div>}
+    </div>
+  );
+}
+
+/* ============ TAB: ĐỔI MẬT KHẨU (quản trị / TĐT / TĐP / cán bộ) ============ */
+function PasswordTab() {
+  const { config, setConfig, loading } = useAuthConfig();
+  const [unitPw, setUnitPw] = useState("");
+  const [adminPw, setAdminPw] = useState("");
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setUnitPw(config.unitPassword);
+    setAdminPw(config.adminPassword);
+  }, [config.unitPassword, config.adminPassword]);
+
+  const save = async () => {
+    if (!unitPw.trim() || !adminPw.trim()) return;
+    setSaving(true);
+    const ok = await setConfig({ unitPassword: unitPw.trim(), adminPassword: adminPw.trim() });
+    setSaving(false);
+    setStatus(ok ? "Đã lưu mật khẩu mới. Áp dụng ngay từ lần đăng nhập tiếp theo." : "Lưu thất bại, thử lại nhé.");
+    setTimeout(() => setStatus(""), 4000);
+  };
+
+  return (
+    <div>
+      <SectionHeader icon={KeyRound} eyebrow="Bảo mật" title="Đổi mật khẩu" />
+      {loading ? <LoadingRow /> : (
+        <div className="stamp-border p-4" style={{ background: "#fff" }}>
+          <p className="f-body text-xs mb-4" style={{ color: T.inkSoft }}>
+            Chỉ Quản trị, Trung đội trưởng, Trung đội phó và Cán bộ được gán quyền mới thấy và sửa được mục này.
+            Mật khẩu mới áp dụng ngay từ lần đăng nhập tiếp theo của mọi người trong trung đội.
+          </p>
+          <Field label="Mật khẩu chung trung đội (dùng để đăng nhập thường)">
+            <input className={inputCls} style={inputStyle} value={unitPw} onChange={(e) => setUnitPw(e.target.value)} />
+          </Field>
+          <Field label="Mật khẩu quản trị (đăng nhập được toàn quyền)">
+            <input className={inputCls} style={inputStyle} value={adminPw} onChange={(e) => setAdminPw(e.target.value)} />
+          </Field>
+          <Btn onClick={save} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
+          {status && <div className="f-body text-xs mt-3" style={{ color: T.green }}>{status}</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1719,11 +1861,16 @@ export default function App() {
       case "poll": return <PollTab user={user} perm={perm} />;
       case "board": return <BoardTab user={user} perm={perm} />;
       case "permissions": return <PermissionsTab permissions={permissions} setPermissions={setPermissions} permLoading={permLoading} />;
+      case "password": return <PasswordTab />;
       default: return null;
     }
   };
 
-  const visibleTabs = perm.isAdmin ? [...TABS, { id: "permissions", label: "Phân quyền", icon: Shield }] : TABS;
+  const visibleTabs = [
+    ...TABS,
+    ...(perm.canManage ? [{ id: "password", label: "Đổi mật khẩu", icon: KeyRound }] : []),
+    ...(perm.isAdmin ? [{ id: "permissions", label: "Phân quyền", icon: Shield }] : []),
+  ];
   const roleIcon = { admin: Star, can_bo: Shield, thanh_vien: Users };
   const RoleIcon = roleIcon[perm.role] || Users;
 
