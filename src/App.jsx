@@ -299,6 +299,96 @@ function useAuthConfig() {
   return { config, setConfig: update, loading };
 }
 
+/* ============ THÔNG BÁO SỐ MỚI TRÊN THANH ĐIỀU HƯỚNG (giống Zalo) ============
+   Mỗi người dùng có một "trạng thái đã xem" riêng (lưu theo tên đăng nhập, tách biệt với người khác)
+   ghi lại thời điểm gần nhất họ mở từng mục. Số thông báo = số mục có trong danh sách được TẠO SAU
+   thời điểm đó. Khi người dùng bấm vào mục nào, thời điểm "đã xem" của mục đó được cập nhật ngay
+   lập tức → số thông báo biến mất, để biết mục nào mới mà mình chưa xem qua.
+*/
+function useSeenState(user) {
+  const key = normalizeName(user);
+  const docId = `seen_${key || "khach"}`;
+  const [seen, setSeenState] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!key) { setSeenState({}); setLoading(false); return; }
+    setLoading(true);
+    const ref = doc(db, "lt31b2", docId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data().value) {
+          try { setSeenState(JSON.parse(snap.data().value)); } catch (e) { setSeenState({}); }
+        } else {
+          setSeenState({});
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, [key, docId]);
+
+  const markSeen = async (tabId) => {
+    const next = { ...seen, [tabId]: Date.now() };
+    setSeenState(next);
+    try {
+      await setDoc(doc(db, "lt31b2", docId), { value: JSON.stringify(next) });
+    } catch (e) {
+      const msg = `Cập nhật trạng thái đã xem thất bại — ${e?.code || ""} ${e?.message || e}`;
+      reportGlobalError(msg);
+    }
+  };
+
+  return { seen, markSeen, loading };
+}
+
+// Lấy thời điểm tạo của 1 mục: ưu tiên createdAt (nếu có), không thì dùng id (vì id trong app này luôn là Date.now())
+const itemCreatedAt = (o) => new Date(o?.createdAt || o?.id || 0).getTime();
+// Đếm số mục được tạo SAU thời điểm "đã xem" (sinceTs) — dùng để hiển thị số thông báo mới
+const countNewSince = (items, sinceTs) => (items || []).filter((it) => itemCreatedAt(it) > (sinceTs || 0)).length;
+
+// Cấu hình khoá đăng ký ra ngoài: khoá thủ công (manualLock) và/hoặc khoá tự động đến 1 thời điểm (lockAt, chuỗi datetime-local)
+function useOutingLock() {
+  const [config, setConfigState] = useState({ manualLock: false, lockAt: "" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const ref = doc(db, "lt31b2", "outingLock");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data().value) {
+          try {
+            const parsed = JSON.parse(snap.data().value);
+            setConfigState({ manualLock: Boolean(parsed.manualLock), lockAt: parsed.lockAt || "" });
+          } catch (e) {
+            // giữ mặc định nếu dữ liệu lỗi
+          }
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, []);
+
+  const update = async (next) => {
+    setConfigState(next);
+    try {
+      await setDoc(doc(db, "lt31b2", "outingLock"), { value: JSON.stringify(next) });
+      return true;
+    } catch (e) {
+      const msg = `Cập nhật khoá đăng ký thất bại — ${e?.code || ""} ${e?.message || e}`;
+      reportGlobalError(msg);
+      return false;
+    }
+  };
+
+  return { config, setConfig: update, loading };
+}
+
 function useRole(user, isAdminLogin) {
   const { items: permissions, setItems: setPermissions, loading: permLoading } = useSharedList("permissions");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
@@ -1377,17 +1467,42 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
 }
 
 /* ============ TAB: ĐĂNG KÝ RA NGOÀI ============ */
+/* ============ TAB: ĐĂNG KÝ RA NGOÀI ============
+   - Mỗi đăng ký lưu kèm createdAt (thời điểm tạo) để xếp STT theo đúng thứ tự đăng ký trước/sau (tính riêng theo từng ngày).
+   - Quản trị / Trung đội trưởng / Trung đội phó / Cán bộ (perm.canManage) có thể khoá đăng ký:
+       + Khoá thủ công: bật/tắt ngay lập tức.
+       + Khoá tự động: đặt một thời điểm, quá giờ đó hệ thống tự khoá, không cho tạo đăng ký mới nữa.
+     Khi bị khoá, ai cũng thấy thông báo "Đã hết thời gian đăng ký" và không thể mở form đăng ký.
+*/
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
+  const lock = useOutingLock();
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
+  const [lockAtInput, setLockAtInput] = useState(lock.config.lockAt || "");
+
+  useEffect(() => { setLockAtInput(lock.config.lockAt || ""); }, [lock.config.lockAt]);
+
+  const nowTs = new Date();
+  const scheduledLocked = Boolean(lock.config.lockAt) && nowTs >= new Date(lock.config.lockAt);
+  const isLocked = Boolean(lock.config.manualLock) || scheduledLocked;
+  const lockMessage = lock.config.manualLock
+    ? "Đăng ký ra ngoài đang bị khoá thủ công. Vui lòng liên hệ chỉ huy."
+    : scheduledLocked
+    ? `Đã hết thời gian đăng ký (khoá tự động lúc ${new Date(lock.config.lockAt).toLocaleString("vi-VN")}).`
+    : "";
+
+  const toggleManualLock = async () => { await lock.setConfig({ ...lock.config, manualLock: !lock.config.manualLock }); };
+  const saveScheduledLock = async () => { await lock.setConfig({ ...lock.config, lockAt: lockAtInput }); };
+  const clearScheduledLock = async () => { setLockAtInput(""); await lock.setConfig({ ...lock.config, lockAt: "" }); };
 
   const add = async () => {
+    if (isLocked) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới."); return; }
     if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), ...form, dangKyBoi: user, trangThai: "Chưa về", gioVeThucTe: "" }, ...items]);
+    await setItems([{ id: Date.now(), ...form, dangKyBoi: user, trangThai: "Chưa về", gioVeThucTe: "", createdAt: new Date().toISOString() }, ...items]);
     setForm({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
     setShowForm(false);
   };
@@ -1399,19 +1514,36 @@ function OutingTab({ user, perm }) {
     await setItems(items.map((i) => (i.id === id ? { ...i, trangThai: "Đã về", gioVeThucTe: `${hh}:${mm}` } : i)));
   };
 
-  const todays = items.filter((i) => i.ngay === today);
-  const others = items.filter((i) => i.ngay !== today);
+  // STT tính theo thứ tự thời gian đăng ký (createdAt), riêng cho từng ngày, để biết ai đăng ký trước/sau
+  const createdTime = (o) => new Date(o.createdAt || o.id).getTime();
+  const sttMap = {};
+  {
+    const counters = {};
+    [...items].sort((a, b) => createdTime(a) - createdTime(b)).forEach((o) => {
+      counters[o.ngay] = (counters[o.ngay] || 0) + 1;
+      sttMap[o.id] = counters[o.ngay];
+    });
+  }
+
+  const todays = items.filter((i) => i.ngay === today).sort((a, b) => createdTime(a) - createdTime(b));
+  const others = items.filter((i) => i.ngay !== today).sort((a, b) => createdTime(a) - createdTime(b));
   const chuaVe = todays.filter((i) => i.trangThai === "Chưa về").length;
   const canAct = (o) => perm.canManage || perm.isOwner(o.dangKyBoi);
 
   const Row = ({ o }) => (
     <div className="flex items-start justify-between gap-3 p-3" style={{ background: "#fff", borderLeft: `4px solid ${o.trangThai === "Đã về" ? T.green : T.red}` }}>
-      <div>
-        <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{o.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span></div>
-        <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
-        <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
-          {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
-          {o.trangThai === "Đã về" && <> · Đã về lúc {o.gioVeThucTe}</>}
+      <div className="flex items-start gap-3">
+        <div className="f-mono text-xs font-semibold shrink-0 w-8 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
+        <div>
+          <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{o.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span></div>
+          <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
+          <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
+            {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
+            {o.trangThai === "Đã về" && <> · Đã về lúc {o.gioVeThucTe}</>}
+          </div>
+          <div className="f-mono text-[10px] mt-0.5 italic" style={{ color: T.inkSoft }}>
+            Đăng ký lúc {new Date(o.createdAt || o.id).toLocaleString("vi-VN")}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -1427,9 +1559,36 @@ function OutingTab({ user, perm }) {
   return (
     <div>
       <SectionHeader icon={DoorOpen} eyebrow={`Hôm nay: ${todays.length} lượt · ${chuaVe} chưa về`} title="Đăng ký ra ngoài"
-        action={<Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Đăng ký</Btn>} />
+        action={<Btn onClick={() => setShowForm((s) => !s)} disabled={isLocked}><Plus size={16} /> Đăng ký</Btn>} />
 
-      {showForm && (
+      {isLocked && (
+        <div className="f-body text-sm mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.red, color: "#fff" }}>
+          <DoorOpen size={16} /> <b className="f-display uppercase text-xs tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
+        </div>
+      )}
+
+      {perm.canManage && (
+        <div className="stamp-border p-4 mb-5" style={{ background: "#FBF3DD" }}>
+          <div className="f-display text-xs uppercase tracking-widest mb-3" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <Btn variant={lock.config.manualLock ? "danger" : "outline"} onClick={toggleManualLock}>
+              {lock.config.manualLock ? "Đang khoá thủ công — bấm để mở khoá" : "Khoá đăng ký ngay (thủ công)"}
+            </Btn>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Tự động khoá đến thời điểm">
+              <input type="datetime-local" className={inputCls} style={inputStyle} value={lockAtInput} onChange={(e) => setLockAtInput(e.target.value)} />
+            </Field>
+            <Btn onClick={saveScheduledLock}>Lưu giờ khoá</Btn>
+            {lock.config.lockAt && <Btn variant="outline" onClick={clearScheduledLock}>Xoá giờ khoá</Btn>}
+          </div>
+          <p className="f-body text-xs mt-2" style={{ color: T.inkSoft }}>
+            Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — không ai tạo đăng ký mới được nữa, kể cả khi chưa bấm nút khoá thủ công.
+          </p>
+        </div>
+      )}
+
+      {showForm && !isLocked && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
           <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -2313,6 +2472,43 @@ export default function App() {
 
   const { perm, permissions, setPermissions, permLoading } = useRole(user, isAdminLogin);
 
+  // Dữ liệu của các phụ lục (trừ Quân số) — dùng để đếm "số thông báo mới" trên thanh điều hướng, kiểu như Zalo.
+  const announcementsList = useSharedList("announcements");
+  const scheduleList = useSharedList("schedule"); // dùng chung cho cả Lịch học/thi và Lịch trực ban
+  const studyAppendixList = useSharedList("studyAppendix");
+  const checkpointsList = useSharedList("checkpoints");
+  const outingsList = useSharedList("outings");
+  const attendanceList = useSharedList("attendance");
+  const docsList = useSharedList("docs");
+  const scoresList = useSharedList("scores");
+  const fundList = useSharedList("fund");
+  const pollsList = useSharedList("polls");
+  const postsList = useSharedList("posts");
+  const seenState = useSeenState(user);
+
+  const unreadCounts = {
+    home: countNewSince(announcementsList.items, seenState.seen.home),
+    study:
+      countNewSince(scheduleList.items.filter((s) => s.type === "Học" || s.type === "Thi"), seenState.seen.study) +
+      countNewSince(studyAppendixList.items, seenState.seen.study),
+    duty:
+      countNewSince(scheduleList.items.filter((s) => s.type === "Trực ban"), seenState.seen.duty) +
+      countNewSince(checkpointsList.items, seenState.seen.duty),
+    outing: countNewSince(outingsList.items, seenState.seen.outing),
+    attendance: countNewSince(attendanceList.items, seenState.seen.attendance),
+    docs: countNewSince(docsList.items, seenState.seen.docs),
+    scores: countNewSince(scoresList.items, seenState.seen.scores),
+    fund: countNewSince(fundList.items, seenState.seen.fund),
+    poll: countNewSince(pollsList.items, seenState.seen.poll),
+    board: countNewSince(postsList.items, seenState.seen.board),
+  };
+
+  const goToTab = (tabId) => {
+    setTab(tabId);
+    setNavOpen(false);
+    if (unreadCounts[tabId] > 0) seenState.markSeen(tabId);
+  };
+
   if (!user) return <LoginGate onLogin={(name, admin) => { setUser(name); setIsAdminLogin(!!admin); }} />;
 
   const roleBadge = { admin: "Quản trị", can_bo: "Cán bộ", thanh_vien: "Thành viên" };
@@ -2410,10 +2606,11 @@ export default function App() {
             {visibleTabs.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
+              const count = unreadCounts[t.id] || 0;
               return (
                 <button
                   key={t.id}
-                  onClick={() => { setTab(t.id); setNavOpen(false); }}
+                  onClick={() => goToTab(t.id)}
                   className={`nav-item w-full flex items-center gap-3 px-5 py-3 f-display text-sm uppercase tracking-wide text-left ${active ? "nav-item-active" : ""}`}
                   style={{
                     background: active ? T.amber : "transparent",
@@ -2427,7 +2624,16 @@ export default function App() {
                   >
                     <Icon size={14} />
                   </span>
-                  {t.label}
+                  <span className="flex-1">{t.label}</span>
+                  {count > 0 && (
+                    <span
+                      className="f-mono shrink-0 inline-flex items-center justify-center rounded-full"
+                      style={{ background: T.red, color: "#fff", minWidth: 18, height: 18, fontSize: 10, fontWeight: 700, padding: "0 5px" }}
+                      title={`${count} mục mới chưa xem`}
+                    >
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
                 </button>
               );
             })}
