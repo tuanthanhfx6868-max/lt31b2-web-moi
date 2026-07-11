@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -354,16 +354,33 @@ function Btn({ children, onClick, variant = "solid", type = "button", disabled }
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, required }) {
   return (
     <label className="block mb-3">
-      <span className="f-mono text-[11px] uppercase tracking-widest block mb-1" style={{ color: T.inkSoft }}>{label}</span>
+      <span className="f-mono text-[11px] uppercase tracking-widest block mb-1" style={{ color: T.inkSoft }}>
+        {label}
+        {required && <span style={{ color: T.red }} title="Bắt buộc nhập"> *</span>}
+      </span>
       {children}
     </label>
   );
 }
 const inputStyle = { background: "#fff", border: `1px solid #C9BFA5`, color: T.ink };
 const inputCls = "f-body w-full px-3 py-2 outline-none text-sm rounded-sm input-plain";
+
+/* ============ CẢNH BÁO THIẾU TRƯỜNG BẮT BUỘC (hiện ngay trong form khi bấm Lưu mà chưa nhập đủ) ============ */
+function FormWarning({ message }) {
+  if (!message) return null;
+  return (
+    <div
+      className="f-body text-xs px-3 py-2.5 mb-3 flex items-start gap-2"
+      style={{ background: "#FCEBEA", color: T.red, border: `1px solid ${T.red}` }}
+      role="alert"
+    >
+      <span className="shrink-0">⚠</span> <span>{message}</span>
+    </div>
+  );
+}
 
 function LoadingRow() {
   return <div className="flex items-center gap-2 f-body text-sm py-6" style={{ color: T.inkSoft }}><Loader2 size={16} className="animate-spin" /> Đang tải dữ liệu…</div>;
@@ -544,7 +561,7 @@ function LoginGate({ onLogin }) {
           </div>
 
           <div className="relative">
-            <Field label="Họ và tên">
+            <Field label="Họ và tên" required>
               <input className={inputCls} style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Nguyễn Văn A" />
             </Field>
             <Field label="Mật khẩu (chung trung đội hoặc quản trị)">
@@ -581,13 +598,15 @@ function AnnouncementsTab({ user, perm }) {
   const outings = useSharedList("outings");
   const [form, setForm] = useState({ title: "", body: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
 
   const today = new Date().toISOString().slice(0, 10);
   const todaySchedule = schedule.items.filter((s) => s.date === today);
   const chuaVe = outings.items.filter((o) => o.ngay === today && o.trangThai === "Chưa về");
 
   const add = async () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim()) { setWarn("Vui lòng nhập Tiêu đề trước khi lưu."); return; }
+    setWarn("");
     const entry = { id: Date.now(), title: form.title, body: form.body, author: user, date: new Date().toISOString(), pinned: false };
     await setItems([entry, ...items]);
     setForm({ title: "", body: "" });
@@ -627,7 +646,8 @@ function AnnouncementsTab({ user, perm }) {
 
       {showForm && (
         <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
-          <Field label="Tiêu đề"><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <FormWarning message={warn} />
+          <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Nội dung"><textarea rows={3} className={inputCls} style={inputStyle} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></Field>
           <Btn onClick={add}>Đăng</Btn>
         </div>
@@ -688,15 +708,20 @@ const ROSTER_ROLE_OPTIONS = [
 */
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
-  const [form, setForm] = useState({ msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [warn, setWarn] = useState("");
+  const [editWarn, setEditWarn] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const add = async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) { setWarn("Vui lòng nhập Họ và tên trước khi lưu."); return; }
+    setWarn("");
     await setItems([...items, { id: Date.now(), ...form }]);
-    setForm({ msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+    setForm({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -708,31 +733,79 @@ function RosterTab({ perm, user }) {
 
   const startEdit = (m) => {
     setEditingId(m.id);
-    setEditForm({ msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
+    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
   const saveEdit = async () => {
-    if (!editForm.name.trim()) return;
+    if (!editForm.name.trim()) { setEditWarn("Vui lòng nhập Họ và tên trước khi lưu."); return; }
+    setEditWarn("");
     const original = items.find((i) => i.id === editingId);
     if (!original) return;
     // Chỉ Quản trị / TĐT / TĐP mới được đổi Chức vụ và Tiểu đội; người tự sửa chỉ đổi các thông tin cá nhân.
     const merged = canEditAll
-      ? { ...original, msv: editForm.msv, name: editForm.name, role: editForm.role, tieuDoi: editForm.tieuDoi, phone: editForm.phone, dob: editForm.dob }
-      : { ...original, msv: editForm.msv, name: editForm.name, phone: editForm.phone, dob: editForm.dob };
+      ? { ...original, stt: editForm.stt, msv: editForm.msv, name: editForm.name, role: editForm.role, tieuDoi: editForm.tieuDoi, phone: editForm.phone, dob: editForm.dob }
+      : { ...original, stt: editForm.stt, msv: editForm.msv, name: editForm.name, phone: editForm.phone, dob: editForm.dob };
     await setItems(items.map((i) => (i.id === editingId ? merged : i)));
     cancelEdit();
   };
+
+  // Sắp xếp theo STT tăng dần (người chưa nhập STT sẽ xếp cuối bảng)
+  const sortedItems = [...items].sort((a, b) => {
+    const na = a.stt === "" || a.stt === undefined || a.stt === null ? Infinity : Number(a.stt);
+    const nb = b.stt === "" || b.stt === undefined || b.stt === null ? Infinity : Number(b.stt);
+    if (na !== nb) return na - nb;
+    return 0;
+  });
+
+  // Lọc theo ô tìm kiếm (không phân biệt hoa/thường), tìm theo mọi thông tin hiển thị trên bảng
+  const q = search.trim().toLowerCase();
+  const filteredItems = q
+    ? sortedItems.filter((m) => {
+        const haystack = [m.stt, m.msv, m.name, m.role, m.tieuDoi ? `tiểu đội ${m.tieuDoi}` : "", m.phone, formatDob(m.dob)]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      })
+    : sortedItems;
 
   return (
     <div>
       <SectionHeader icon={Users} eyebrow={`Quân số: ${items.length}`} title="Danh sách trung đội"
         action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Thêm thành viên</Btn>} />
 
+      <div className="flex justify-end mb-3 -mt-2">
+        <button
+          onClick={() => setSearchOpen((s) => { const next = !s; if (!next) setSearch(""); return next; })}
+          title="Tìm kiếm"
+          aria-label="Tìm kiếm"
+          className="p-2 rounded-full btn-press"
+          style={{ background: searchOpen ? T.amber : "transparent", color: searchOpen ? T.greenDark : T.green, border: `1px solid ${T.green}` }}
+        >
+          <Search size={16} />
+        </button>
+      </div>
+
+      {searchOpen && (
+        <div className="mb-4 relative">
+          <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.inkSoft }} />
+          <input
+            autoFocus
+            className={inputCls}
+            style={{ ...inputStyle, paddingLeft: 32 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm theo STT, mã số, họ tên, chức vụ, tiểu đội, SĐT, ngày sinh…"
+          />
+        </div>
+      )}
+
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Số thứ tự (STT)"><input type="number" className={inputCls} style={inputStyle} value={form.stt} onChange={(e) => setForm({ ...form, stt: e.target.value })} placeholder="VD: 1" /></Field>
           <Field label="Mã số học viên"><input className={inputCls} style={inputStyle} value={form.msv} onChange={(e) => setForm({ ...form, msv: e.target.value })} /></Field>
-          <Field label="Họ và tên"><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Chức vụ">
             <select className={inputCls} style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
@@ -755,8 +828,10 @@ function RosterTab({ perm, user }) {
           <div className="md:col-span-2 f-display text-xs uppercase tracking-widest" style={{ color: T.amberDark }}>
             Đang chỉnh sửa thông tin: {editForm.name || "—"}
           </div>
+          <div className="md:col-span-2"><FormWarning message={editWarn} /></div>
+          <Field label="Số thứ tự (STT)"><input type="number" className={inputCls} style={inputStyle} value={editForm.stt} onChange={(e) => setEditForm({ ...editForm, stt: e.target.value })} placeholder="VD: 1" /></Field>
           <Field label="Mã số học viên"><input className={inputCls} style={inputStyle} value={editForm.msv} onChange={(e) => setEditForm({ ...editForm, msv: e.target.value })} /></Field>
-          <Field label="Họ và tên"><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
+          <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
           <Field label="Chức vụ">
             <select className={inputCls} style={inputStyle} value={editForm.role} disabled={!canEditAll} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
               {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
@@ -782,11 +857,14 @@ function RosterTab({ perm, user }) {
         </div>
       )}
 
-      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : (
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : filteredItems.length === 0 ? (
+        <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
+      ) : (
         <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
           <table className="w-full text-sm f-body">
             <thead>
               <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                <th className="text-left px-3 py-2">STT</th>
                 <th className="text-left px-3 py-2">Mã số</th><th className="text-left px-3 py-2">Họ tên</th>
                 <th className="text-left px-3 py-2">Chức vụ</th><th className="text-left px-3 py-2">Tiểu đội</th>
                 <th className="text-left px-3 py-2">Ngày sinh</th>
@@ -794,8 +872,9 @@ function RosterTab({ perm, user }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((m, i) => (
+              {filteredItems.map((m, i) => (
                 <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                  <td className="px-3 py-2 f-mono">{m.stt || "—"}</td>
                   <td className="px-3 py-2 f-mono">{m.msv || "—"}</td>
                   <td className="px-3 py-2 font-medium">{m.name}</td>
                   <td className="px-3 py-2">{m.role}</td>
@@ -831,11 +910,13 @@ function StudyScheduleTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("schedule");
   const [form, setForm] = useState({ date: "", type: "Học", title: "", note: "", url: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
   const typeColor = { "Học": T.green, "Thi": T.amberDark };
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   const add = async () => {
-    if (!form.title.trim() || !form.date) return;
+    if (!form.title.trim() || !form.date) { setWarn("Vui lòng nhập đủ Ngày và Tiêu đề trước khi lưu."); return; }
+    setWarn("");
     await setItems([...items, { id: Date.now(), ...form, by: user }]);
     setForm({ date: "", type: "Học", title: "", note: "", url: "" });
     setShowForm(false);
@@ -847,9 +928,11 @@ function StudyScheduleTab({ user, perm }) {
   const appendix = useSharedList("studyAppendix");
   const [aForm, setAForm] = useState({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
   const [showAForm, setShowAForm] = useState(false);
+  const [aWarn, setAWarn] = useState("");
 
   const addAppendix = async () => {
-    if (!aForm.title.trim() || !aForm.from || !aForm.to) return;
+    if (!aForm.title.trim() || !aForm.from || !aForm.to) { setAWarn("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày trước khi lưu."); return; }
+    setAWarn("");
     await appendix.setItems([{ id: Date.now(), ...aForm, by: user }, ...appendix.items]);
     setAForm({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
     setShowAForm(false);
@@ -864,13 +947,14 @@ function StudyScheduleTab({ user, perm }) {
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <Field label="Ngày"><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
           <Field label="Loại">
             <select className={inputCls} style={inputStyle} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
               <option>Học</option><option>Thi</option>
             </select>
           </Field>
-          <Field label="Tiêu đề"><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
           <div className="md:col-span-2">
             <Field label="Link ảnh lịch học / lịch thi / file đính kèm (Google Drive, ảnh chụp TKB…)">
@@ -915,15 +999,16 @@ function StudyScheduleTab({ user, perm }) {
 
       {perm.canManage && showAForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <div className="md:col-span-2"><Field label="Tên phụ lục"><input className={inputCls} style={inputStyle} value={aForm.title} onChange={(e) => setAForm({ ...aForm, title: e.target.value })} placeholder="VD: Lịch học tuần 3 tháng 7" /></Field></div>
+          <div className="md:col-span-2"><FormWarning message={aWarn} /></div>
+          <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={aForm.title} onChange={(e) => setAForm({ ...aForm, title: e.target.value })} placeholder="VD: Lịch học tuần 3 tháng 7" /></Field></div>
           <Field label="Loại">
             <select className={inputCls} style={inputStyle} value={aForm.type} onChange={(e) => setAForm({ ...aForm, type: e.target.value })}>
               <option>Lịch học</option><option>Lịch thi</option>
             </select>
           </Field>
           <div />
-          <Field label="Áp dụng từ ngày"><input type="date" className={inputCls} style={inputStyle} value={aForm.from} onChange={(e) => setAForm({ ...aForm, from: e.target.value })} /></Field>
-          <Field label="Đến ngày"><input type="date" className={inputCls} style={inputStyle} value={aForm.to} onChange={(e) => setAForm({ ...aForm, to: e.target.value })} /></Field>
+          <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={aForm.from} onChange={(e) => setAForm({ ...aForm, from: e.target.value })} /></Field>
+          <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={aForm.to} onChange={(e) => setAForm({ ...aForm, to: e.target.value })} /></Field>
           <div className="md:col-span-2">
             <Field label="Link ảnh hoặc file lịch tuần (chụp bảng lịch, Google Drive…)">
               <input className={inputCls} style={inputStyle} value={aForm.url} onChange={(e) => setAForm({ ...aForm, url: e.target.value })} placeholder="https://…" />
@@ -976,10 +1061,12 @@ function DutyScheduleTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("schedule");
   const [form, setForm] = useState({ date: "", type: "Trực ban", title: "", note: "", url: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   const add = async () => {
-    if (!form.title.trim() || !form.date) return;
+    if (!form.title.trim() || !form.date) { setWarn("Vui lòng nhập đủ Ngày và Tiêu đề trước khi lưu."); return; }
+    setWarn("");
     await setItems([...items, { id: Date.now(), ...form, type: "Trực ban", by: user }]);
     setForm({ date: "", type: "Trực ban", title: "", note: "", url: "" });
     setShowForm(false);
@@ -992,10 +1079,12 @@ function DutyScheduleTab({ user, perm }) {
   const CHOT_LIST = Array.from({ length: 10 }, (_, i) => String(i + 1));
   const [cForm, setCForm] = useState({ chot: "1", chotKhac: "", tieuDoi: "1", ngay: "", ca: "", ghiChu: "" });
   const [showCForm, setShowCForm] = useState(false);
+  const [cWarn, setCWarn] = useState("");
 
   const addCheckpoint = async () => {
     const chotLabel = cForm.chot === "Khác" ? (cForm.chotKhac.trim() || "Khác") : `Chốt ${cForm.chot}`;
-    if (!cForm.ngay) return;
+    if (!cForm.ngay) { setCWarn("Vui lòng chọn Ngày trực trước khi lưu."); return; }
+    setCWarn("");
     await checkpoint.setItems([...checkpoint.items, { id: Date.now(), ...cForm, chotLabel }]);
     setCForm({ chot: "1", chotKhac: "", tieuDoi: "1", ngay: "", ca: "", ghiChu: "" });
     setShowCForm(false);
@@ -1010,8 +1099,9 @@ function DutyScheduleTab({ user, perm }) {
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <Field label="Ngày"><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label="Tiêu đề"><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
           <Field label="Link ảnh/file đính kèm">
             <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
@@ -1053,6 +1143,7 @@ function DutyScheduleTab({ user, perm }) {
 
       {perm.canManage && showCForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
+          <div className="md:col-span-2"><FormWarning message={cWarn} /></div>
           <Field label="Chốt số">
             <select className={inputCls} style={inputStyle} value={cForm.chot} onChange={(e) => setCForm({ ...cForm, chot: e.target.value })}>
               {CHOT_LIST.map((c) => <option key={c} value={c}>Chốt {c}</option>)}
@@ -1068,7 +1159,7 @@ function DutyScheduleTab({ user, perm }) {
               <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
             </select>
           </Field>
-          <Field label="Ngày trực"><input type="date" className={inputCls} style={inputStyle} value={cForm.ngay} onChange={(e) => setCForm({ ...cForm, ngay: e.target.value })} /></Field>
+          <Field label="Ngày trực" required><input type="date" className={inputCls} style={inputStyle} value={cForm.ngay} onChange={(e) => setCForm({ ...cForm, ngay: e.target.value })} /></Field>
           <Field label="Ca trực (VD: 06:00–12:00)"><input className={inputCls} style={inputStyle} value={cForm.ca} onChange={(e) => setCForm({ ...cForm, ca: e.target.value })} /></Field>
           <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={cForm.ghiChu} onChange={(e) => setCForm({ ...cForm, ghiChu: e.target.value })} /></Field></div>
           <div className="md:col-span-2"><Btn onClick={addCheckpoint}>Lưu phân công</Btn></div>
@@ -1110,9 +1201,11 @@ function OutingTab({ user, perm }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
 
   const add = async () => {
-    if (!form.name.trim() || !form.lyDo.trim()) return;
+    if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
+    setWarn("");
     await setItems([{ id: Date.now(), ...form, dangKyBoi: user, trangThai: "Chưa về", gioVeThucTe: "" }, ...items]);
     setForm({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
     setShowForm(false);
@@ -1157,7 +1250,8 @@ function OutingTab({ user, perm }) {
 
       {showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <Field label="Họ và tên"><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={form.namSinh} onChange={(e) => setForm({ ...form, namSinh: e.target.value })} placeholder="VD: 2004" /></Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
@@ -1168,7 +1262,7 @@ function OutingTab({ user, perm }) {
           <Field label="Ngày ra ngoài"><input type="date" className={inputCls} style={inputStyle} value={form.ngay} onChange={(e) => setForm({ ...form, ngay: e.target.value })} /></Field>
           <Field label="Giờ đi"><input type="time" className={inputCls} style={inputStyle} value={form.gioDi} onChange={(e) => setForm({ ...form, gioDi: e.target.value })} /></Field>
           <Field label="Giờ dự kiến về"><input type="time" className={inputCls} style={inputStyle} value={form.gioVeDuKien} onChange={(e) => setForm({ ...form, gioVeDuKien: e.target.value })} /></Field>
-          <div className="md:col-span-2"><Field label="Lý do ra ngoài"><input className={inputCls} style={inputStyle} value={form.lyDo} onChange={(e) => setForm({ ...form, lyDo: e.target.value })} placeholder="VD: Khám bệnh, mua đồ dùng cá nhân…" /></Field></div>
+          <div className="md:col-span-2"><Field label="Lý do ra ngoài" required><input className={inputCls} style={inputStyle} value={form.lyDo} onChange={(e) => setForm({ ...form, lyDo: e.target.value })} placeholder="VD: Khám bệnh, mua đồ dùng cá nhân…" /></Field></div>
           <div className="md:col-span-2"><Btn onClick={add}>Đăng ký</Btn></div>
         </div>
       )}
@@ -1322,9 +1416,11 @@ function DocsTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("docs");
   const [form, setForm] = useState({ subject: "", title: "", url: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
 
   const add = async () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim()) { setWarn("Vui lòng nhập Tên tài liệu trước khi lưu."); return; }
+    setWarn("");
     await setItems([{ id: Date.now(), ...form, by: user, date: new Date().toISOString() }, ...items]);
     setForm({ subject: "", title: "", url: "" });
     setShowForm(false);
@@ -1344,8 +1440,9 @@ function DocsTab({ user, perm }) {
 
       {showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: "#fff" }}>
+          <div className="md:col-span-3"><FormWarning message={warn} /></div>
           <Field label="Môn học"><input className={inputCls} style={inputStyle} value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></Field>
-          <Field label="Tên tài liệu"><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Tên tài liệu" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Đường dẫn (link)">
             <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
             <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
@@ -1383,9 +1480,11 @@ function ScoresTab({ perm }) {
   const { items, setItems, loading } = useSharedList("scores");
   const [form, setForm] = useState({ name: "", category: "Học tập", score: "", note: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
 
   const add = async () => {
-    if (!form.name.trim() || form.score === "") return;
+    if (!form.name.trim() || form.score === "") { setWarn("Vui lòng nhập đủ Họ tên và Điểm trước khi lưu."); return; }
+    setWarn("");
     await setItems([{ id: Date.now(), ...form, date: new Date().toISOString() }, ...items]);
     setForm({ name: "", category: "Học tập", score: "", note: "" });
     setShowForm(false);
@@ -1399,13 +1498,14 @@ function ScoresTab({ perm }) {
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <Field label="Họ tên"><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Họ tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Hạng mục">
             <select className={inputCls} style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               <option>Học tập</option><option>Chấp hành điều lệnh</option><option>Thể lực</option><option>Kỷ luật</option>
             </select>
           </Field>
-          <Field label="Điểm"><input type="number" className={inputCls} style={inputStyle} value={form.score} onChange={(e) => setForm({ ...form, score: e.target.value })} /></Field>
+          <Field label="Điểm" required><input type="number" className={inputCls} style={inputStyle} value={form.score} onChange={(e) => setForm({ ...form, score: e.target.value })} /></Field>
           <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
           <div className="md:col-span-2"><Btn onClick={add}>Lưu</Btn></div>
         </div>
@@ -1443,9 +1543,11 @@ function FundTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("fund");
   const [form, setForm] = useState({ type: "Thu", amount: "", desc: "" });
   const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
 
   const add = async () => {
-    if (!form.amount || !form.desc.trim()) return;
+    if (!form.amount || !form.desc.trim()) { setWarn("Vui lòng nhập đủ Số tiền và Nội dung trước khi lưu."); return; }
+    setWarn("");
     await setItems([{ id: Date.now(), ...form, by: user, date: new Date().toISOString() }, ...items]);
     setForm({ type: "Thu", amount: "", desc: "" });
     setShowForm(false);
@@ -1467,13 +1569,14 @@ function FundTab({ user, perm }) {
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: "#fff" }}>
+          <div className="md:col-span-3"><FormWarning message={warn} /></div>
           <Field label="Loại">
             <select className={inputCls} style={inputStyle} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
               <option>Thu</option><option>Chi</option>
             </select>
           </Field>
-          <Field label="Số tiền (đ)"><input type="number" className={inputCls} style={inputStyle} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-          <Field label="Nội dung"><input className={inputCls} style={inputStyle} value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} /></Field>
+          <Field label="Số tiền (đ)" required><input type="number" className={inputCls} style={inputStyle} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+          <Field label="Nội dung" required><input className={inputCls} style={inputStyle} value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} /></Field>
           <div className="md:col-span-3"><Btn onClick={add}>Lưu</Btn></div>
         </div>
       )}
@@ -1504,6 +1607,7 @@ function PollTab({ user, perm }) {
   const [form, setForm] = useState({ question: "", options: ["", ""], note: "", allowMulti: false });
   const [showForm, setShowForm] = useState(false);
   const [openResults, setOpenResults] = useState({});
+  const [warn, setWarn] = useState("");
 
   const updateOption = (idx, val) => {
     const next = [...form.options];
@@ -1515,7 +1619,11 @@ function PollTab({ user, perm }) {
 
   const create = async () => {
     const cleanOptions = form.options.map((o) => o.trim()).filter(Boolean);
-    if (!form.question.trim() || cleanOptions.length < 2) return;
+    if (!form.question.trim() || cleanOptions.length < 2) {
+      setWarn("Vui lòng nhập Vấn đề cần lấy ý kiến và ít nhất 2 phương án trước khi lưu.");
+      return;
+    }
+    setWarn("");
     const entry = {
       id: Date.now(),
       question: form.question.trim(),
@@ -1557,13 +1665,14 @@ function PollTab({ user, perm }) {
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
-          <Field label="Vấn đề cần lấy ý kiến">
+          <FormWarning message={warn} />
+          <Field label="Vấn đề cần lấy ý kiến" required>
             <input className={inputCls} style={inputStyle} value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} placeholder="VD: Chọn địa điểm liên hoan cuối kỳ" />
           </Field>
           <Field label="Ghi chú thêm (không bắt buộc)">
             <input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="VD: Hạn chốt ý kiến trước 20h thứ Sáu" />
           </Field>
-          <span className="f-mono text-[11px] uppercase tracking-widest block mb-1.5" style={{ color: T.inkSoft }}>Các phương án</span>
+          <span className="f-mono text-[11px] uppercase tracking-widest block mb-1.5" style={{ color: T.inkSoft }}>Các phương án <span style={{ color: T.red }} title="Bắt buộc nhập ít nhất 2 phương án">*</span></span>
           <div className="space-y-2 mb-2">
             {form.options.map((opt, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -1679,15 +1788,19 @@ function BoardTab({ user, perm }) {
   const [content, setContent] = useState("");
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [warn, setWarn] = useState("");
+  const [replyWarn, setReplyWarn] = useState("");
 
   const post = async () => {
-    if (!content.trim()) return;
+    if (!content.trim()) { setWarn("Vui lòng nhập nội dung trước khi đăng."); return; }
+    setWarn("");
     await setItems([{ id: Date.now(), author: user, content, date: new Date().toISOString(), replies: [] }, ...items]);
     setContent("");
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const reply = async (id) => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim()) { setReplyWarn("Vui lòng nhập nội dung trả lời trước khi gửi."); return; }
+    setReplyWarn("");
     await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, date: new Date().toISOString() }] } : p));
     setReplyText("");
     setReplyOpen(null);
@@ -1704,6 +1817,7 @@ function BoardTab({ user, perm }) {
       <SectionHeader icon={MessageSquare} eyebrow="Trao đổi" title="Bảng tin trung đội" />
 
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
+        <FormWarning message={warn} />
         <textarea rows={2} className={inputCls} style={inputStyle} placeholder="Viết gì đó cho cả trung đội…" value={content} onChange={(e) => setContent(e.target.value)} />
         <div className="mt-2"><Btn onClick={post}>Đăng</Btn></div>
       </div>
@@ -1735,12 +1849,15 @@ function BoardTab({ user, perm }) {
               )}
 
               {replyOpen === p.id ? (
-                <div className="mt-2 flex gap-2">
-                  <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
-                  <Btn onClick={() => reply(p.id)}>Gửi</Btn>
+                <div className="mt-2">
+                  {replyOpen === p.id && <FormWarning message={replyWarn} />}
+                  <div className="flex gap-2">
+                    <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
+                    <Btn onClick={() => reply(p.id)}>Gửi</Btn>
+                  </div>
                 </div>
               ) : (
-                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => setReplyOpen(p.id)}>Trả lời</button>
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); }}>Trả lời</button>
               )}
             </div>
           ))}
@@ -1855,8 +1972,11 @@ function PasswordTab({ user, perm }) {
     setOwnPw(config.memberPasswords?.[normalized] || config.unitPassword);
   }, [config.unitPassword, config.adminPassword, config.memberPasswords, normalized]);
 
+  const [warn, setWarn] = useState("");
+
   const saveAdmin = async () => {
-    if (!unitPw.trim() || !adminPw.trim()) return;
+    if (!unitPw.trim() || !adminPw.trim()) { setWarn("Vui lòng nhập đủ cả Mật khẩu chung trung đội và Mật khẩu quản trị trước khi lưu."); return; }
+    setWarn("");
     setSaving(true);
     const ok = await setConfig({ ...config, unitPassword: unitPw.trim(), adminPassword: adminPw.trim() });
     setSaving(false);
@@ -1865,7 +1985,8 @@ function PasswordTab({ user, perm }) {
   };
 
   const saveOwn = async () => {
-    if (!ownPw.trim()) return;
+    if (!ownPw.trim()) { setWarn("Vui lòng nhập mật khẩu trước khi lưu."); return; }
+    setWarn("");
     setSaving(true);
     const nextMemberPasswords = { ...(config.memberPasswords || {}), [normalized]: ownPw.trim() };
     const ok = await setConfig({ ...config, memberPasswords: nextMemberPasswords });
@@ -1885,10 +2006,11 @@ function PasswordTab({ user, perm }) {
             Bạn là Quản trị — quyền cao nhất, đổi được cả mật khẩu chung trung đội và mật khẩu quản trị.
             Mật khẩu mới áp dụng ngay từ lần đăng nhập tiếp theo của mọi người trong trung đội.
           </p>
-          <Field label="Mật khẩu chung trung đội (dùng để đăng nhập thường)">
+          <FormWarning message={warn} />
+          <Field label="Mật khẩu chung trung đội (dùng để đăng nhập thường)" required>
             <input className={inputCls} style={inputStyle} value={unitPw} onChange={(e) => setUnitPw(e.target.value)} />
           </Field>
-          <Field label="Mật khẩu quản trị (đăng nhập được toàn quyền)">
+          <Field label="Mật khẩu quản trị (đăng nhập được toàn quyền)" required>
             <input className={inputCls} style={inputStyle} value={adminPw} onChange={(e) => setAdminPw(e.target.value)} />
           </Field>
           <Btn onClick={saveAdmin} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
@@ -1900,7 +2022,8 @@ function PasswordTab({ user, perm }) {
             Bạn là Trung đội trưởng/phó — chỉ đổi được mật khẩu đăng nhập riêng của chính mình.
             Bạn không có quyền xem hay đổi mật khẩu chung trung đội, và càng không có quyền xem hay đổi mật khẩu quản trị.
           </p>
-          <Field label={`Mật khẩu đăng nhập riêng của bạn (${user})`}>
+          <FormWarning message={warn} />
+          <Field label={`Mật khẩu đăng nhập riêng của bạn (${user})`} required>
             <input className={inputCls} style={inputStyle} value={ownPw} onChange={(e) => setOwnPw(e.target.value)} />
           </Field>
           <Btn onClick={saveOwn} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
@@ -1915,10 +2038,12 @@ function PermissionsTab({ permissions, setPermissions, permLoading }) {
   const roster = useSharedList("roster");
   const [nameInput, setNameInput] = useState("");
   const [roleInput, setRoleInput] = useState("can_bo");
+  const [warn, setWarn] = useState("");
 
   const grant = async () => {
     const nm = nameInput.trim();
-    if (!nm) return;
+    if (!nm) { setWarn("Vui lòng nhập Họ và tên trước khi gán quyền."); return; }
+    setWarn("");
     const rest = permissions.filter((p) => normalizeName(p.name) !== normalizeName(nm));
     await setPermissions([...rest, { id: Date.now(), name: nm, role: roleInput }]);
     setNameInput("");
@@ -1940,8 +2065,9 @@ function PermissionsTab({ permissions, setPermissions, permLoading }) {
           Người còn lại (Thành viên) chỉ được thêm nội dung mới và tự xoá nội dung do chính mình đăng.
           Nhập đúng họ tên mà người đó dùng để đăng nhập, rồi chọn vai trò — áp dụng ngay từ lần đăng nhập tiếp theo của họ.
         </p>
+        <FormWarning message={warn} />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-          <Field label="Họ và tên">
+          <Field label="Họ và tên" required>
             <input list="roster-names" className={inputCls} style={inputStyle} value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="VD: Nguyễn Văn A" />
             <datalist id="roster-names">
               {roster.items.map((m) => <option key={m.id} value={m.name} />)}
