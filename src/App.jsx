@@ -1170,7 +1170,7 @@ function DutyScheduleTab({ user, perm }) {
       )}
 
       {checkpoint.loading ? <LoadingRow /> : sortedCheckpoints.length === 0 ? <EmptyState text="Chưa có phân công trực chốt nào." /> : (
-        <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
+        <div className="overflow-x-auto stamp-border mb-8" style={{ background: "#fff" }}>
           <table className="w-full text-sm f-body">
             <thead>
               <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
@@ -1188,6 +1188,184 @@ function DutyScheduleTab({ user, perm }) {
                   <td className="px-3 py-2 f-mono">{c.ca || "—"}</td>
                   <td className="px-3 py-2" style={{ color: T.inkSoft }}>{c.ghiChu || "—"}</td>
                   <td className="px-3 py-2 text-right">{perm.canManage && <button onClick={() => removeCheckpoint(c.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ---- Phụ lục trực cuối tuần (thời gian nghỉ) ---- */}
+      <WeekendRestAppendix user={user} perm={perm} />
+    </div>
+  );
+}
+
+/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian nghỉ, danh sách theo tiểu đội) ============ */
+function WeekendRestAppendix({ user, perm }) {
+  const { items, setItems, loading } = useSharedList("weekendRest");
+  const [form, setForm] = useState({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
+  const [showForm, setShowForm] = useState(false);
+  const [warn, setWarn] = useState("");
+
+  const create = async () => {
+    if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu nghỉ và Ngày kết thúc nghỉ trước khi lưu."); return; }
+    setWarn("");
+    await setItems([{ id: Date.now(), ...form, by: user, members: [] }, ...items]);
+    setForm({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
+    setShowForm(false);
+  };
+  const removeEntry = async (id) => setItems(items.filter((e) => e.id !== id));
+
+  const sortedEntries = [...items].sort((a, b) => new Date(b.fromDate) - new Date(a.fromDate));
+
+  return (
+    <div>
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực cuối tuần — thời gian nghỉ"
+        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt nghỉ</Btn>} />
+
+      {perm.canManage && showForm && (
+        <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
+          <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          <Field label="Ngày bắt đầu nghỉ" required>
+            <input type="date" className={inputCls} style={inputStyle} value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} />
+          </Field>
+          <Field label="Giờ bắt đầu nghỉ (mặc định 17:00, có thể đổi)">
+            <input type="time" className={inputCls} style={inputStyle} value={form.fromTime} onChange={(e) => setForm({ ...form, fromTime: e.target.value })} />
+          </Field>
+          <Field label="Ngày kết thúc nghỉ" required>
+            <input type="date" className={inputCls} style={inputStyle} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} />
+          </Field>
+          <Field label="Giờ kết thúc nghỉ (mặc định 21:00, có thể đổi)">
+            <input type="time" className={inputCls} style={inputStyle} value={form.toTime} onChange={(e) => setForm({ ...form, toTime: e.target.value })} />
+          </Field>
+          <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.ghiChu} onChange={(e) => setForm({ ...form, ghiChu: e.target.value })} /></Field></div>
+          <div className="md:col-span-2">
+            <Field label="Link ảnh/file đính kèm (tuỳ ý)">
+              <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
+              <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
+            </Field>
+          </div>
+          <div className="md:col-span-2"><Btn onClick={create}>Tạo đợt nghỉ</Btn></div>
+        </div>
+      )}
+
+      {loading ? <LoadingRow /> : sortedEntries.length === 0 ? <EmptyState text="Chưa có đợt nghỉ cuối tuần nào." /> : (
+        <div className="space-y-5">
+          {sortedEntries.map((entry) => (
+            <WeekendEntryCard key={entry.id} entry={entry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry }) {
+  const [mForm, setMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+  const [showMForm, setShowMForm] = useState(false);
+  const [mWarn, setMWarn] = useState("");
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
+
+  const addMember = async () => {
+    if (!mForm.hoTen.trim() || !mForm.namSinh.trim()) {
+      setMWarn("Vui lòng nhập đủ Họ và tên, Năm sinh trước khi lưu.");
+      return;
+    }
+    setMWarn("");
+    const member = { id: Date.now(), ...mForm };
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: [...(e.members || []), member] } : e));
+    await setEntries(next);
+    setMForm({ hoTen: "", namSinh: "", tieuDoi: "1" });
+    setShowMForm(false);
+  };
+  const removeMember = async (mid) => {
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).filter((m) => m.id !== mid) } : e));
+    await setEntries(next);
+  };
+
+  const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
+
+  return (
+    <div className="stamp-border p-4" style={{ background: "#fff" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="f-display font-semibold text-sm flex items-center gap-2" style={{ color: T.green }}>
+            <CalendarDays size={15} />
+            Nghỉ từ {entry.fromTime || "17:00"} ngày {entry.fromDate ? new Date(entry.fromDate).toLocaleDateString("vi-VN") : "—"}
+            {" → "}
+            {entry.toTime || "21:00"} ngày {entry.toDate ? new Date(entry.toDate).toLocaleDateString("vi-VN") : "—"}
+          </div>
+          {entry.ghiChu && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{entry.ghiChu}</div>}
+          {entry.url && (
+            isImage(entry.url) ? (
+              <a href={entry.url} target="_blank" rel="noreferrer" className="block mt-2">
+                <img src={entry.url} alt="Phụ lục" className="max-w-[220px] max-h-48 stamp-border" />
+              </a>
+            ) : (
+              <a href={entry.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file đính kèm
+              </a>
+            )
+          )}
+        </div>
+        {perm.canManage && (
+          <button onClick={() => onRemoveEntry(entry.id)} title="Xoá đợt nghỉ"><Trash2 size={15} style={{ color: T.red }} /></button>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+        <span className="f-mono text-[11px] uppercase tracking-widest" style={{ color: T.amberDark }}>
+          Danh sách ({sortedMembers.length} người)
+        </span>
+        {perm.canManage && (
+          <Btn variant="outline" onClick={() => setShowMForm((s) => !s)}><Plus size={14} /> Thêm người</Btn>
+        )}
+      </div>
+
+      {perm.canManage && showMForm && (
+        <div className="mt-3 p-3 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+          <div className="md:col-span-3"><FormWarning message={mWarn} /></div>
+          <Field label="Họ và tên" required>
+            <input className={inputCls} style={inputStyle} value={mForm.hoTen} onChange={(e) => setMForm({ ...mForm, hoTen: e.target.value })} placeholder="VD: Nguyễn Văn A" />
+          </Field>
+          <Field label="Năm sinh" required>
+            <input className={inputCls} style={inputStyle} value={mForm.namSinh} onChange={(e) => setMForm({ ...mForm, namSinh: e.target.value })} placeholder="VD: 2004" />
+          </Field>
+          <Field label="Tiểu đội" required>
+            <select className={inputCls} style={inputStyle} value={mForm.tieuDoi} onChange={(e) => setMForm({ ...mForm, tieuDoi: e.target.value })}>
+              <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
+              <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
+            </select>
+          </Field>
+          <div className="md:col-span-3"><Btn onClick={addMember}>Thêm vào danh sách</Btn></div>
+        </div>
+      )}
+
+      {sortedMembers.length === 0 ? (
+        <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
+      ) : (
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-sm f-body">
+            <thead>
+              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                <th className="text-left px-3 py-2 w-14">STT</th>
+                <th className="text-left px-3 py-2">Họ và tên</th>
+                <th className="text-left px-3 py-2">Năm sinh</th>
+                <th className="text-left px-3 py-2">Tiểu đội</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedMembers.map((m, i) => (
+                <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                  <td className="px-3 py-2 f-mono">{i + 1}</td>
+                  <td className="px-3 py-2 font-medium">{m.hoTen}</td>
+                  <td className="px-3 py-2 f-mono">{m.namSinh}</td>
+                  <td className="px-3 py-2 f-mono">TĐ{m.tieuDoi}</td>
+                  <td className="px-3 py-2 text-right">
+                    {perm.canManage && <button onClick={() => removeMember(m.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1872,7 +2050,7 @@ function BoardTab({ user, perm }) {
 
 /* ============ TAB: PHÂN QUYỀN (chỉ quản trị) ============ */
 const ALL_DATA_KEYS = [
-  "announcements", "schedule", "studyAppendix", "checkpoints",
+  "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest",
   "outings", "attendance", "docs", "scores",
   "fund", "posts", "polls", "roster", "permissions", "authConfig",
 ];
