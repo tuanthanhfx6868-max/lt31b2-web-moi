@@ -2274,8 +2274,11 @@ export default function App() {
         </main>
       </div>
 
-      <footer className="text-center f-mono text-[11px] py-4" style={{ color: T.inkSoft }}>
-        Trung đội B2 CSGT LT31 — Đại học Cảnh sát nhân dân
+      <footer className="text-center f-mono text-[11px] py-4 space-y-1" style={{ color: T.inkSoft }}>
+        <div>Trung đội B2 CSGT LT31 — Đại học Cảnh sát nhân dân</div>
+        <div className="uppercase tracking-widest">
+          Quản trị hệ thống: <span style={{ color: T.green, fontWeight: 600 }}>ĐẶNG TUẤN THANH</span>
+        </div>
       </footer>
     </div>
   );
