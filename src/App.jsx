@@ -584,6 +584,9 @@ function LoginGate({ onLogin }) {
             <p className="f-body text-[11px] mt-4 text-center" style={{ color: T.inkSoft }}>
               Dữ liệu trên trang này dùng chung cho cả trung đội. Quyền thêm/xoá nội dung tuỳ theo vai trò được quản trị gán.
             </p>
+            <p className="f-mono text-[10.5px] mt-3 text-center uppercase tracking-widest" style={{ color: T.inkSoft }}>
+              Quản trị hệ thống: <span style={{ color: T.green, fontWeight: 600 }}>ĐẶNG TUẤN THANH</span>
+            </p>
           </div>
         </div>
       </form>
