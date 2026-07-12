@@ -1087,151 +1087,181 @@ function RosterTab({ perm, user }) {
 }
 
 /* ============ TAB: LỊCH HỌC ============ */
+/* ============ TAB: LỊCH HỌC / LỊCH THI (chỉ còn phụ lục theo tuần) ============
+   Giống hệt cơ chế của "Trực cuối tuần": mỗi phụ lục có khoảng ngày áp dụng (từ ngày → đến ngày).
+   Hệ thống tự chọn phụ lục "hiện hành" theo ngày hôm nay; khi qua ngày cuối cùng của phụ lục hiện tại,
+   tự động chuyển sang phụ lục kế tiếp (nếu đã tạo) — nhưng vẫn chọn lại được để xem các tuần cũ.
+   Sửa (bút chì) chỉ dành cho chỉ huy (Quản trị / Trung đội trưởng / Trung đội phó) khi có sai sót.
+*/
 function StudyScheduleTab({ user, perm }) {
-  const { items, setItems, loading } = useSharedList("schedule");
-  const [form, setForm] = useState({ date: "", type: "Học", title: "", note: "", url: "" });
+  const { items, setItems, loading } = useSharedList("studyAppendix");
+  const [form, setForm] = useState({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
-  const typeColor = { "Học": T.green, "Thi": T.amberDark };
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editErr, setEditErr] = useState("");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
+  // Chỉ chỉ huy (Quản trị / Trung đội trưởng / Trung đội phó) mới sửa được phụ lục khi có sai sót
+  const canEdit = perm.isAdmin || perm.isCommandRole;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Phụ lục "hiện hành" theo ngày hôm nay: đang trong khoảng áp dụng → nếu không có thì phụ lục gần nhất sắp tới →
+  // nếu cũng không có thì phụ lục gần nhất vừa hết hạn → cuối cùng là phụ lục đầu tiên nếu chỉ có 1.
+  const computeCurrentId = (list) => {
+    if (list.length === 0) return null;
+    const active = list.find((e) => e.from && e.to && e.from <= todayStr && todayStr <= e.to);
+    if (active) return active.id;
+    const upcoming = [...list].filter((e) => e.from > todayStr).sort((a, b) => a.from.localeCompare(b.from))[0];
+    if (upcoming) return upcoming.id;
+    const past = [...list].filter((e) => e.to < todayStr).sort((a, b) => b.to.localeCompare(a.to))[0];
+    return past ? past.id : list[0].id;
+  };
+
+  const currentId = computeCurrentId(items);
+  const [viewId, setViewId] = useState(currentId);
+  const prevCurrentRef = useRef(currentId);
+
+  useEffect(() => {
+    // Đang xem đúng phụ lục hiện hành cũ, và phụ lục hiện hành vừa đổi (qua ngày mới / vừa tạo phụ lục mới) → tự chuyển theo
+    if (viewId === prevCurrentRef.current && currentId !== prevCurrentRef.current) {
+      setViewId(currentId);
+    }
+    // Phụ lục đang xem đã bị xoá → quay về phụ lục hiện hành
+    if (viewId && !items.find((e) => e.id === viewId)) {
+      setViewId(currentId);
+    }
+    prevCurrentRef.current = currentId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, items]);
+
   const add = async () => {
-    if (!form.title.trim() || !form.date) { setWarn("Vui lòng nhập đủ Ngày và Tiêu đề trước khi lưu."); return; }
+    if (!form.title.trim() || !form.from || !form.to) { setWarn("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày trước khi lưu."); return; }
     setWarn("");
-    await setItems([...items, { id: Date.now(), ...form, by: user }]);
-    setForm({ date: "", type: "Học", title: "", note: "", url: "" });
+    const newEntry = { id: Date.now(), ...form, by: user };
+    await setItems([newEntry, ...items]);
+    setForm({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
     setShowForm(false);
+    setViewId(newEntry.id);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
-  const sorted = items.filter((i) => i.type === "Học" || i.type === "Thi").sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // ---- Phụ lục lịch tuần (ảnh/file có khoảng ngày) ----
-  const appendix = useSharedList("studyAppendix");
-  const [aForm, setAForm] = useState({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
-  const [showAForm, setShowAForm] = useState(false);
-  const [aWarn, setAWarn] = useState("");
-
-  const addAppendix = async () => {
-    if (!aForm.title.trim() || !aForm.from || !aForm.to) { setAWarn("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày trước khi lưu."); return; }
-    setAWarn("");
-    await appendix.setItems([{ id: Date.now(), ...aForm, by: user }, ...appendix.items]);
-    setAForm({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
-    setShowAForm(false);
+  const startEdit = (a) => {
+    setEditingId(a.id);
+    setEditForm({ title: a.title || "", type: a.type || "Lịch học", from: a.from || "", to: a.to || "", url: a.url || "", note: a.note || "" });
+    setEditErr("");
   };
-  const removeAppendix = async (id) => appendix.setItems(appendix.items.filter((i) => i.id !== id));
-  const sortedAppendix = [...appendix.items].sort((a, b) => new Date(b.from) - new Date(a.from));
+  const cancelEdit = () => { setEditingId(null); setEditForm(null); setEditErr(""); };
+  const saveEdit = async () => {
+    if (!editForm.title.trim() || !editForm.from || !editForm.to) { setEditErr("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày (mục có dấu *) trước khi lưu."); return; }
+    setEditErr("");
+    await setItems(items.map((i) => (i.id === editingId ? { ...i, ...editForm } : i)));
+    cancelEdit();
+  };
+
+  // Danh sách để chọn lại (mới nhất trước)
+  const sortedEntries = [...items].sort((a, b) => (b.from || "").localeCompare(a.from || ""));
+  const viewEntry = items.find((e) => e.id === viewId) || null;
+  const entryLabel = (e) =>
+    `${e.type || "Lịch học"} · ${e.title || "—"} (${e.from ? new Date(e.from).toLocaleDateString("vi-VN") : "—"} → ${e.to ? new Date(e.to).toLocaleDateString("vi-VN") : "—"})` +
+    (e.to && e.to < todayStr ? "  (đã qua)" : e.from && e.from > todayStr ? "  (sắp tới)" : "  (tuần hiện tại)");
 
   return (
     <div>
-      <SectionHeader icon={CalendarDays} eyebrow="Lịch" title="Lịch học & lịch thi"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Thêm mục lịch</Btn>} />
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Phụ lục lịch học / lịch thi theo tuần"
+        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Thêm phụ lục</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <Field label="Ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="VD: Lịch học tuần 3 tháng 7" /></Field></div>
           <Field label="Loại">
             <select className={inputCls} style={inputStyle} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option>Học</option><option>Thi</option>
-            </select>
-          </Field>
-          <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-          <div className="md:col-span-2">
-            <Field label="Link ảnh lịch học / lịch thi / file đính kèm (Google Drive, ảnh chụp TKB…)">
-              <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
-              <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
-            </Field>
-          </div>
-          <div className="md:col-span-2"><Btn onClick={add}>Lưu</Btn></div>
-        </div>
-      )}
-
-      {loading ? <LoadingRow /> : sorted.length === 0 ? <EmptyState text="Chưa có lịch học/thi nào." /> : (
-        <div className="space-y-2 mb-8">
-          {sorted.map((s) => (
-            <div key={s.id} className="flex items-start gap-4 p-3 flex-wrap" style={{ background: "#fff", borderLeft: `4px solid ${typeColor[s.type] || T.green}` }}>
-              <div className="f-mono text-xs w-24 shrink-0 pt-0.5" style={{ color: T.inkSoft }}>{new Date(s.date).toLocaleDateString("vi-VN")}</div>
-              <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5 shrink-0" style={{ background: typeColor[s.type] || T.green, color: "#fff" }}>{s.type}</span>
-              <div className="flex-1 min-w-[140px]">
-                <div className="f-body font-medium text-sm" style={{ color: T.ink }}>{s.title}</div>
-                {s.note && <div className="f-body text-xs" style={{ color: T.inkSoft }}>{s.note}</div>}
-                {s.url && (
-                  isImage(s.url) ? (
-                    <a href={s.url} target="_blank" rel="noreferrer" className="block mt-2">
-                      <img src={s.url} alt={s.title} className="max-w-[200px] max-h-40 stamp-border" />
-                    </a>
-                  ) : (
-                    <a href={s.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
-                      <Paperclip size={12} /> Xem file đính kèm
-                    </a>
-                  )
-                )}
-              </div>
-              {perm.canManage && <button onClick={() => remove(s.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ---- Phụ lục lịch tuần ---- */}
-      <SectionHeader icon={ImageIcon} eyebrow="Phụ lục" title="Phụ lục lịch học / lịch thi theo tuần"
-        action={perm.canManage && <Btn onClick={() => setShowAForm((s) => !s)}><Plus size={16} /> Thêm phụ lục</Btn>} />
-
-      {perm.canManage && showAForm && (
-        <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
-          <div className="md:col-span-2"><FormWarning message={aWarn} /></div>
-          <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={aForm.title} onChange={(e) => setAForm({ ...aForm, title: e.target.value })} placeholder="VD: Lịch học tuần 3 tháng 7" /></Field></div>
-          <Field label="Loại">
-            <select className={inputCls} style={inputStyle} value={aForm.type} onChange={(e) => setAForm({ ...aForm, type: e.target.value })}>
               <option>Lịch học</option><option>Lịch thi</option>
             </select>
           </Field>
           <div />
-          <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={aForm.from} onChange={(e) => setAForm({ ...aForm, from: e.target.value })} /></Field>
-          <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={aForm.to} onChange={(e) => setAForm({ ...aForm, to: e.target.value })} /></Field>
+          <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} /></Field>
+          <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field>
           <div className="md:col-span-2">
             <Field label="Link ảnh hoặc file lịch tuần (chụp bảng lịch, Google Drive…)">
-              <input className={inputCls} style={inputStyle} value={aForm.url} onChange={(e) => setAForm({ ...aForm, url: e.target.value })} placeholder="https://…" />
-              <UploadField onUploaded={(url) => setAForm((f) => ({ ...f, url }))} />
+              <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
+              <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
             </Field>
           </div>
-          <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={aForm.note} onChange={(e) => setAForm({ ...aForm, note: e.target.value })} /></Field></div>
-          <div className="md:col-span-2"><Btn onClick={addAppendix}>Lưu phụ lục</Btn></div>
+          <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field></div>
+          <div className="md:col-span-2"><Btn onClick={add}>Lưu phụ lục</Btn></div>
         </div>
       )}
 
-      {appendix.loading ? <LoadingRow /> : sortedAppendix.length === 0 ? <EmptyState text="Chưa có phụ lục lịch tuần nào." /> : (
-        <div className="space-y-3">
-          {sortedAppendix.map((a) => (
-            <div key={a.id} className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${a.type === "Lịch thi" ? T.amberDark : T.green}` }}>
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có phụ lục lịch tuần nào." /> : (
+        <>
+          <div className="mb-4 max-w-md">
+            <Field label="Xem theo tuần (tự chuyển sang tuần hiện tại khi hết hạn — chọn lại để xem tuần cũ)">
+              <select className={inputCls} style={inputStyle} value={viewId || ""} onChange={(e) => setViewId(Number(e.target.value))}>
+                {sortedEntries.map((e) => (
+                  <option key={e.id} value={e.id}>{entryLabel(e)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {viewEntry && editingId === viewEntry.id && editForm ? (
+            <div className="stamp-border p-4 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#FBF3DD" }}>
+              <div className="md:col-span-2 f-display text-xs uppercase tracking-widest" style={{ color: T.amberDark }}>Đang sửa phụ lục (khắc phục sai sót)</div>
+              <div className="md:col-span-2"><FormWarning message={editErr} /></div>
+              <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} /></Field></div>
+              <Field label="Loại">
+                <select className={inputCls} style={inputStyle} value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
+                  <option>Lịch học</option><option>Lịch thi</option>
+                </select>
+              </Field>
+              <div />
+              <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={editForm.from} onChange={(e) => setEditForm({ ...editForm, from: e.target.value })} /></Field>
+              <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={editForm.to} onChange={(e) => setEditForm({ ...editForm, to: e.target.value })} /></Field>
+              <div className="md:col-span-2">
+                <Field label="Link ảnh hoặc file lịch tuần">
+                  <input className={inputCls} style={inputStyle} value={editForm.url} onChange={(e) => setEditForm({ ...editForm, url: e.target.value })} placeholder="https://…" />
+                  <UploadField onUploaded={(url) => setEditForm((f) => ({ ...f, url }))} />
+                </Field>
+              </div>
+              <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} /></Field></div>
+              <div className="md:col-span-2 flex gap-2"><Btn onClick={saveEdit}>Lưu thay đổi</Btn><Btn variant="outline" onClick={cancelEdit}>Huỷ</Btn></div>
+            </div>
+          ) : viewEntry ? (
+            <div className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${viewEntry.type === "Lịch thi" ? T.amberDark : T.green}` }}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5" style={{ background: a.type === "Lịch thi" ? T.amberDark : T.green, color: "#fff" }}>{a.type}</span>
-                    <h3 className="f-display font-semibold text-sm" style={{ color: T.green }}>{a.title}</h3>
+                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5" style={{ background: viewEntry.type === "Lịch thi" ? T.amberDark : T.green, color: "#fff" }}>{viewEntry.type}</span>
+                    <h3 className="f-display font-semibold text-sm" style={{ color: T.green }}>{viewEntry.title}</h3>
                   </div>
                   <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
-                    Áp dụng {new Date(a.from).toLocaleDateString("vi-VN")} → {new Date(a.to).toLocaleDateString("vi-VN")}
+                    Áp dụng {new Date(viewEntry.from).toLocaleDateString("vi-VN")} → {new Date(viewEntry.to).toLocaleDateString("vi-VN")}
                   </div>
-                  {a.note && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{a.note}</div>}
-                  {a.url && (
-                    isImage(a.url) ? (
-                      <a href={a.url} target="_blank" rel="noreferrer" className="block mt-2">
-                        <img src={a.url} alt={a.title} className="max-w-full sm:max-w-xs max-h-64 stamp-border" />
+                  {viewEntry.note && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{viewEntry.note}</div>}
+                  {viewEntry.url && (
+                    isImage(viewEntry.url) ? (
+                      <a href={viewEntry.url} target="_blank" rel="noreferrer" className="block mt-2">
+                        <img src={viewEntry.url} alt={viewEntry.title} className="max-w-full sm:max-w-xs max-h-64 stamp-border" />
                       </a>
                     ) : (
-                      <a href={a.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                      <a href={viewEntry.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
                         <Paperclip size={12} /> Xem file phụ lục
                       </a>
                     )
                   )}
                 </div>
-                {perm.canManage && <button onClick={() => removeAppendix(a.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+                <div className="flex items-center gap-2 shrink-0">
+                  {canEdit && <button onClick={() => startEdit(viewEntry)} title="Sửa phụ lục khi có sai sót"><Pencil size={14} style={{ color: T.green }} /></button>}
+                  {perm.canManage && <button onClick={() => remove(viewEntry.id)} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>}
+                </div>
               </div>
             </div>
-          ))}
-        </div>
+          ) : null}
+        </>
       )}
     </div>
   );
@@ -2360,6 +2390,9 @@ function FundTab({ user, perm }) {
   const [form, setForm] = useState({ type: "Thu", amount: "", desc: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editErr, setEditErr] = useState("");
 
   const [cfgForm, setCfgForm] = useState(fundConfig);
   const [showCfgForm, setShowCfgForm] = useState(false);
@@ -2376,6 +2409,20 @@ function FundTab({ user, perm }) {
   const saveCfg = async () => {
     await setFundConfig(cfgForm);
     setShowCfgForm(false);
+  };
+
+  // Sửa giao dịch khi ghi nhầm — chỉ Chỉ huy / Thủ quỹ (perm.canManageFund) mới sửa được, không ai khác điều chỉnh được
+  const startEdit = (f) => {
+    setEditingId(f.id);
+    setEditForm({ type: f.type || "Thu", amount: f.amount || "", desc: f.desc || "" });
+    setEditErr("");
+  };
+  const cancelEdit = () => { setEditingId(null); setEditForm(null); setEditErr(""); };
+  const saveEdit = async () => {
+    if (!editForm.amount || !editForm.desc.trim()) { setEditErr("Vui lòng nhập đủ Số tiền và Nội dung (mục có dấu *) trước khi lưu."); return; }
+    setEditErr("");
+    await setItems(items.map((i) => (i.id === editingId ? { ...i, ...editForm } : i)));
+    cancelEdit();
   };
 
   const total = items.reduce((sum, f) => sum + (f.type === "Thu" ? 1 : -1) * Number(f.amount || 0), 0);
@@ -2468,16 +2515,31 @@ function FundTab({ user, perm }) {
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có giao dịch nào." /> : (
         <div className="space-y-2">
           {items.map((f) => (
-            <div key={f.id} className="flex items-center justify-between p-3" style={{ background: "#fff", borderLeft: `4px solid ${f.type === "Thu" ? T.green : T.red}` }}>
-              <div>
-                <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{f.desc}</div>
-                <div className="f-mono text-[11px]" style={{ color: T.inkSoft }}>{f.by} · {new Date(f.date).toLocaleDateString("vi-VN")}</div>
+            editingId === f.id && editForm ? (
+              <div key={f.id} className="stamp-border p-3 grid grid-cols-1 md:grid-cols-3 gap-2.5" style={{ background: "#FBF3DD" }}>
+                <div className="md:col-span-3"><FormWarning message={editErr} /></div>
+                <Field label="Loại">
+                  <select className={inputCls} style={inputStyle} value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
+                    <option>Thu</option><option>Chi</option>
+                  </select>
+                </Field>
+                <Field label="Số tiền (đ)" required><input type="number" className={inputCls} style={inputStyle} value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></Field>
+                <Field label="Nội dung" required><input className={inputCls} style={inputStyle} value={editForm.desc} onChange={(e) => setEditForm({ ...editForm, desc: e.target.value })} /></Field>
+                <div className="md:col-span-3 flex gap-2"><Btn onClick={saveEdit}>Lưu thay đổi</Btn><Btn variant="outline" onClick={cancelEdit}>Huỷ</Btn></div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="f-mono font-semibold" style={{ color: f.type === "Thu" ? T.green : T.red }}>{f.type === "Thu" ? "+" : "−"}{fmt(Number(f.amount))}</span>
-                {perm.canManageFund && <button onClick={() => remove(f.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+            ) : (
+              <div key={f.id} className="flex items-center justify-between p-3" style={{ background: "#fff", borderLeft: `4px solid ${f.type === "Thu" ? T.green : T.red}` }}>
+                <div>
+                  <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{f.desc}</div>
+                  <div className="f-mono text-[11px]" style={{ color: T.inkSoft }}>{f.by} · {new Date(f.date).toLocaleDateString("vi-VN")}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="f-mono font-semibold" style={{ color: f.type === "Thu" ? T.green : T.red }}>{f.type === "Thu" ? "+" : "−"}{fmt(Number(f.amount))}</span>
+                  {perm.canManageFund && <button onClick={() => startEdit(f)} title="Sửa khi ghi nhầm"><Pencil size={14} style={{ color: T.green }} /></button>}
+                  {perm.canManageFund && <button onClick={() => remove(f.id)} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>}
+                </div>
               </div>
-            </div>
+            )
           ))}
         </div>
       )}
@@ -3032,9 +3094,7 @@ export default function App() {
 
   const unreadCounts = {
     home: countNewSince(announcementsList.items, seenState.seen.home),
-    study:
-      countNewSince(scheduleList.items.filter((s) => s.type === "Học" || s.type === "Thi"), seenState.seen.study) +
-      countNewSince(studyAppendixList.items, seenState.seen.study),
+    study: countNewSince(studyAppendixList.items, seenState.seen.study),
     duty:
       countNewSince(scheduleList.items.filter((s) => s.type === "Trực ban"), seenState.seen.duty) +
       countNewSince(checkpointsList.items, seenState.seen.duty),
