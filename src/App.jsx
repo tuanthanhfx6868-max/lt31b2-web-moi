@@ -1042,36 +1042,36 @@ function RosterTab({ perm, user }) {
         <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
       ) : (
         <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
-          <table className="w-full text-sm f-body">
+          <table className="w-full f-body" style={{ fontSize: "12.5px" }}>
             <thead>
-              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
-                <th className="text-left px-3 py-2">STT</th>
-                <th className="text-left px-3 py-2">Mã số</th><th className="text-left px-3 py-2">Họ tên</th>
-                <th className="text-left px-3 py-2">Chức vụ</th><th className="text-left px-3 py-2">Tiểu đội</th>
-                <th className="text-left px-3 py-2">Ngày sinh</th>
-                <th className="text-left px-3 py-2">SĐT</th><th className="px-3 py-2"></th>
+              <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                <th className="text-left px-2 py-1.5 w-8">STT</th>
+                <th className="text-left px-2 py-1.5">Mã số</th><th className="text-left px-2 py-1.5 min-w-[100px]">Họ tên</th>
+                <th className="text-left px-2 py-1.5">Chức vụ</th><th className="text-left px-2 py-1.5">T.đội</th>
+                <th className="text-left px-2 py-1.5">N.sinh</th>
+                <th className="text-left px-2 py-1.5">SĐT</th><th className="px-2 py-1.5 w-14"></th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((m, i) => (
                 <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
-                  <td className="px-3 py-2 f-mono">{m.stt || "—"}</td>
-                  <td className="px-3 py-2 f-mono">{m.msv || "—"}</td>
-                  <td className="px-3 py-2 font-medium">{m.name}</td>
-                  <td className="px-3 py-2">{m.role}</td>
-                  <td className="px-3 py-2 f-mono">{m.tieuDoi ? `TĐ${m.tieuDoi}` : "—"}</td>
-                  <td className="px-3 py-2 f-mono">{formatDob(m.dob)}</td>
-                  <td className="px-3 py-2 f-mono">{m.phone || "—"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex items-center justify-end gap-2.5">
+                  <td className="px-2 py-1.5 f-mono">{m.stt || "—"}</td>
+                  <td className="px-2 py-1.5 f-mono">{m.msv || "—"}</td>
+                  <td className="px-2 py-1.5 font-medium">{m.name}</td>
+                  <td className="px-2 py-1.5">{m.role}</td>
+                  <td className="px-2 py-1.5 f-mono">{m.tieuDoi ? `TĐ${m.tieuDoi}` : "—"}</td>
+                  <td className="px-2 py-1.5 f-mono">{formatDob(m.dob)}</td>
+                  <td className="px-2 py-1.5 f-mono">{m.phone || "—"}</td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center justify-end gap-2">
                       {canEditRow(m) && (
                         <button onClick={() => startEdit(m)} title="Sửa thông tin">
-                          <Pencil size={14} style={{ color: T.green }} />
+                          <Pencil size={13} style={{ color: T.green }} />
                         </button>
                       )}
                       {perm.canManage && (
                         <button onClick={() => remove(m.id)} title="Xoá">
-                          <Trash2 size={14} style={{ color: T.red }} />
+                          <Trash2 size={13} style={{ color: T.red }} />
                         </button>
                       )}
                     </div>
@@ -1095,7 +1095,30 @@ function RosterTab({ perm, user }) {
 */
 function StudyScheduleTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("studyAppendix");
-  const [form, setForm] = useState({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
+  return (
+    <div>
+      <StudyAppendixSection
+        user={user} perm={perm} loading={loading} allItems={items} setAllItems={setItems}
+        type="Lịch học" icon={CalendarDays} title="Phụ lục lịch học theo tuần" accent={T.green}
+      />
+      <div className="my-8" style={{ borderTop: `1px dashed ${T.paperDark}` }} />
+      <StudyAppendixSection
+        user={user} perm={perm} loading={loading} allItems={items} setAllItems={setItems}
+        type="Lịch thi" icon={ClipboardCheck} title="Phụ lục lịch thi theo tuần" accent={T.amberDark}
+      />
+    </div>
+  );
+}
+
+/* ============ PHỤ LỤC LỊCH HỌC / LỊCH THI THEO TUẦN (tách riêng, mỗi loại tự theo dõi tuần hiện tại) ============
+   Giống hệt cơ chế của "Trực cuối tuần": mỗi phụ lục có khoảng ngày áp dụng (từ ngày → đến ngày).
+   Hệ thống tự chọn phụ lục "hiện hành" theo ngày hôm nay (riêng cho từng loại Lịch học / Lịch thi);
+   khi qua ngày cuối cùng của phụ lục hiện tại, tự động chuyển sang phụ lục kế tiếp (nếu đã tạo)
+   — nhưng vẫn chọn lại được để xem các tuần cũ. Sửa (bút chì) chỉ dành cho chỉ huy khi có sai sót.
+*/
+function StudyAppendixSection({ user, perm, loading, allItems, setAllItems, type, icon: Icon, title, accent }) {
+  const items = allItems.filter((e) => (e.type || "Lịch học") === type);
+  const [form, setForm] = useState({ title: "", from: "", to: "", url: "", note: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -1135,29 +1158,29 @@ function StudyScheduleTab({ user, perm }) {
     }
     prevCurrentRef.current = currentId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, items]);
+  }, [currentId, items.length]);
 
   const add = async () => {
     if (!form.title.trim() || !form.from || !form.to) { setWarn("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày trước khi lưu."); return; }
     setWarn("");
-    const newEntry = { id: Date.now(), ...form, by: user };
-    await setItems([newEntry, ...items]);
-    setForm({ title: "", type: "Lịch học", from: "", to: "", url: "", note: "" });
+    const newEntry = { id: Date.now(), ...form, type, by: user };
+    await setAllItems([newEntry, ...allItems]);
+    setForm({ title: "", from: "", to: "", url: "", note: "" });
     setShowForm(false);
     setViewId(newEntry.id);
   };
-  const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const remove = async (id) => setAllItems(allItems.filter((i) => i.id !== id));
 
   const startEdit = (a) => {
     setEditingId(a.id);
-    setEditForm({ title: a.title || "", type: a.type || "Lịch học", from: a.from || "", to: a.to || "", url: a.url || "", note: a.note || "" });
+    setEditForm({ title: a.title || "", from: a.from || "", to: a.to || "", url: a.url || "", note: a.note || "" });
     setEditErr("");
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); setEditErr(""); };
   const saveEdit = async () => {
     if (!editForm.title.trim() || !editForm.from || !editForm.to) { setEditErr("Vui lòng nhập đủ Tên phụ lục, Áp dụng từ ngày và Đến ngày (mục có dấu *) trước khi lưu."); return; }
     setEditErr("");
-    await setItems(items.map((i) => (i.id === editingId ? { ...i, ...editForm } : i)));
+    await setAllItems(allItems.map((i) => (i.id === editingId ? { ...i, ...editForm } : i)));
     cancelEdit();
   };
 
@@ -1165,24 +1188,18 @@ function StudyScheduleTab({ user, perm }) {
   const sortedEntries = [...items].sort((a, b) => (b.from || "").localeCompare(a.from || ""));
   const viewEntry = items.find((e) => e.id === viewId) || null;
   const entryLabel = (e) =>
-    `${e.type || "Lịch học"} · ${e.title || "—"} (${e.from ? new Date(e.from).toLocaleDateString("vi-VN") : "—"} → ${e.to ? new Date(e.to).toLocaleDateString("vi-VN") : "—"})` +
+    `${e.title || "—"} (${e.from ? new Date(e.from).toLocaleDateString("vi-VN") : "—"} → ${e.to ? new Date(e.to).toLocaleDateString("vi-VN") : "—"})` +
     (e.to && e.to < todayStr ? "  (đã qua)" : e.from && e.from > todayStr ? "  (sắp tới)" : "  (tuần hiện tại)");
 
   return (
     <div>
-      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Phụ lục lịch học / lịch thi theo tuần"
+      <SectionHeader icon={Icon} eyebrow="Phụ lục" title={title}
         action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Thêm phụ lục</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="VD: Lịch học tuần 3 tháng 7" /></Field></div>
-          <Field label="Loại">
-            <select className={inputCls} style={inputStyle} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option>Lịch học</option><option>Lịch thi</option>
-            </select>
-          </Field>
-          <div />
+          <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={type === "Lịch thi" ? "VD: Lịch thi tuần 3 tháng 7" : "VD: Lịch học tuần 3 tháng 7"} /></Field></div>
           <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} /></Field>
           <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field>
           <div className="md:col-span-2">
@@ -1196,7 +1213,7 @@ function StudyScheduleTab({ user, perm }) {
         </div>
       )}
 
-      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có phụ lục lịch tuần nào." /> : (
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text={type === "Lịch thi" ? "Chưa có phụ lục lịch thi theo tuần nào." : "Chưa có phụ lục lịch học theo tuần nào."} /> : (
         <>
           <div className="mb-4 max-w-md">
             <Field label="Xem theo tuần (tự chuyển sang tuần hiện tại khi hết hạn — chọn lại để xem tuần cũ)">
@@ -1213,12 +1230,6 @@ function StudyScheduleTab({ user, perm }) {
               <div className="md:col-span-2 f-display text-xs uppercase tracking-widest" style={{ color: T.amberDark }}>Đang sửa phụ lục (khắc phục sai sót)</div>
               <div className="md:col-span-2"><FormWarning message={editErr} /></div>
               <div className="md:col-span-2"><Field label="Tên phụ lục" required><input className={inputCls} style={inputStyle} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} /></Field></div>
-              <Field label="Loại">
-                <select className={inputCls} style={inputStyle} value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
-                  <option>Lịch học</option><option>Lịch thi</option>
-                </select>
-              </Field>
-              <div />
               <Field label="Áp dụng từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={editForm.from} onChange={(e) => setEditForm({ ...editForm, from: e.target.value })} /></Field>
               <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={editForm.to} onChange={(e) => setEditForm({ ...editForm, to: e.target.value })} /></Field>
               <div className="md:col-span-2">
@@ -1231,11 +1242,11 @@ function StudyScheduleTab({ user, perm }) {
               <div className="md:col-span-2 flex gap-2"><Btn onClick={saveEdit}>Lưu thay đổi</Btn><Btn variant="outline" onClick={cancelEdit}>Huỷ</Btn></div>
             </div>
           ) : viewEntry ? (
-            <div className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${viewEntry.type === "Lịch thi" ? T.amberDark : T.green}` }}>
+            <div className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${accent}` }}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5" style={{ background: viewEntry.type === "Lịch thi" ? T.amberDark : T.green, color: "#fff" }}>{viewEntry.type}</span>
+                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5" style={{ background: accent, color: "#fff" }}>{type}</span>
                     <h3 className="f-display font-semibold text-sm" style={{ color: T.green }}>{viewEntry.title}</h3>
                   </div>
                   <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
@@ -1684,23 +1695,23 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
       ) : (
         <div className="overflow-x-auto mt-3">
-          <table className="w-full text-sm f-body">
+          <table className="w-full text-sm f-body" style={{ fontSize: "12.5px" }}>
             <thead>
-              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
-                <th className="text-left px-3 py-2 w-14">STT</th>
-                <th className="text-left px-3 py-2 min-w-[160px]">Họ và tên</th>
-                <th className="text-left px-3 py-2">Năm sinh</th>
-                <th className="text-left px-3 py-2">Tiểu đội</th>
-                <th className="text-left px-3 py-2 min-w-[260px]">Thẻ ra vào cổng</th>
-                <th className="px-3 py-2"></th>
+              <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                <th className="text-left px-2 py-1.5 w-8">STT</th>
+                <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
+                <th className="text-left px-2 py-1.5">N.sinh</th>
+                <th className="text-left px-2 py-1.5">T.đội</th>
+                <th className="text-left px-2 py-1.5 min-w-[170px]">Thẻ ra vào cổng</th>
+                <th className="px-2 py-1.5 w-14"></th>
               </tr>
             </thead>
             <tbody>
               {sortedMembers.map((m, i) => (
                 editingMemberId === m.id ? (
                   <tr key={m.id} style={{ background: T.paper }}>
-                    <td className="px-3 py-2 f-mono">{i + 1}</td>
-                    <td colSpan={5} className="px-3 py-3">
+                    <td className="px-2 py-1.5 f-mono">{i + 1}</td>
+                    <td colSpan={5} className="px-2 py-2.5">
                       <FormWarning message={editMWarn} />
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                         <input className={inputCls} style={inputStyle} value={editMForm.hoTen} onChange={(e) => setEditMForm({ ...editMForm, hoTen: e.target.value })} placeholder="Họ và tên" />
@@ -1718,24 +1729,22 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                   </tr>
                 ) : (
                   <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
-                    <td className="px-3 py-2 f-mono">{i + 1}</td>
-                    <td className="px-3 py-2 font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {m.hoTen}
+                    <td className="px-2 py-1.5 f-mono">{i + 1}</td>
+                    <td className="px-2 py-1.5 font-medium">{m.hoTen}</td>
+                    <td className="px-2 py-1.5 f-mono">{m.namSinh}</td>
+                    <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
+                    <td className="px-2 py-1.5">
+                      <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center justify-end gap-2">
                         {perm.canManage && (
                           <button onClick={() => startEditMember(m)} title="Sửa thông tin (khi có sai sót)">
                             <Pencil size={13} style={{ color: T.green }} />
                           </button>
                         )}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 f-mono">{m.namSinh}</td>
-                    <td className="px-3 py-2 f-mono">TĐ{m.tieuDoi}</td>
-                    <td className="px-3 py-2">
-                      <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {perm.canManage && <button onClick={() => removeMember(m.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+                        {perm.canManage && <button onClick={() => removeMember(m.id)} title="Xoá"><Trash2 size={13} style={{ color: T.red }} /></button>}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -1789,7 +1798,7 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
       )}
 
       {canAct && st === "da_nhan" && (
-        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[11.5px] font-bold underline btn-press" style={{ color: T.green }}>
+        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[9.5px] font-bold underline btn-press" style={{ color: T.green }}>
           Báo đã trả thẻ
         </button>
       )}
