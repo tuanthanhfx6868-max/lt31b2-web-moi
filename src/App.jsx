@@ -513,13 +513,13 @@ function useRole(user, isAdminLogin) {
 }
 
 /* ============ SMALL UI HELPERS ============ */
-function SectionHeader({ icon: Icon, eyebrow, title, action }) {
+function SectionHeader({ icon: Icon, eyebrow, title, action, compact }) {
   return (
-    <div className="flex items-center justify-between mb-5 pb-4 flex-wrap gap-3" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
+    <div className={compact ? "flex items-center justify-between mb-3 pb-2.5 flex-wrap gap-2" : "flex items-center justify-between mb-5 pb-4 flex-wrap gap-3"} style={{ borderBottom: `1px solid ${T.paperDark}` }}>
       <div>
-        <div className="f-mono text-xs tracking-widest uppercase" style={{ color: T.amberDark }}>{eyebrow}</div>
-        <h2 className="f-display text-2xl md:text-3xl font-semibold flex items-center gap-2.5 mt-0.5" style={{ color: T.green }}>
-          <Icon size={22} /> {title}
+        <div className={compact ? "f-mono text-[10px] tracking-widest uppercase" : "f-mono text-xs tracking-widest uppercase"} style={{ color: T.amberDark }}>{eyebrow}</div>
+        <h2 className={compact ? "f-display text-base md:text-lg font-semibold flex items-center gap-1.5 mt-0.5" : "f-display text-2xl md:text-3xl font-semibold flex items-center gap-2.5 mt-0.5"} style={{ color: T.green }}>
+          <Icon size={compact ? 16 : 22} /> {title}
         </h2>
       </div>
       {action}
@@ -527,8 +527,10 @@ function SectionHeader({ icon: Icon, eyebrow, title, action }) {
   );
 }
 
-function Btn({ children, onClick, variant = "solid", type = "button", disabled }) {
-  const base = "f-display text-sm tracking-wide uppercase px-4 py-2 flex items-center gap-2 disabled:opacity-50 btn-press";
+function Btn({ children, onClick, variant = "solid", type = "button", disabled, size }) {
+  const base = size === "sm"
+    ? "f-display text-[11px] tracking-wide uppercase px-2.5 py-1.5 flex items-center gap-1.5 disabled:opacity-50 btn-press"
+    : "f-display text-sm tracking-wide uppercase px-4 py-2 flex items-center gap-2 disabled:opacity-50 btn-press";
   const style =
     variant === "solid"
       ? { background: T.green, color: T.paper, boxShadow: "0 1px 2px rgba(19,31,25,0.25)" }
@@ -1589,10 +1591,36 @@ function DutyScheduleTab({ user, perm }) {
   const removeCheckpoint = async (id) => checkpoint.setItems(checkpoint.items.filter((i) => i.id !== id));
   const sortedCheckpoints = [...checkpoint.items].sort((a, b) => new Date(b.ngay) - new Date(a.ngay));
 
+  // Sửa phân công trực chốt khi có sai sót (chỉ huy sửa được)
+  const [editingCpId, setEditingCpId] = useState(null);
+  const [editCpForm, setEditCpForm] = useState({ chot: "1", chotKhac: "", tieuDoi: "1", ngay: "", ca: "", ghiChu: "" });
+  const [editCpWarn, setEditCpWarn] = useState("");
+  const startEditCheckpoint = (c) => {
+    setEditingCpId(c.id);
+    const isKnownChot = CHOT_LIST.includes(String(c.chot));
+    setEditCpForm({
+      chot: isKnownChot ? String(c.chot) : "Khác",
+      chotKhac: isKnownChot ? "" : (c.chotLabel || ""),
+      tieuDoi: c.tieuDoi || "1",
+      ngay: c.ngay || "",
+      ca: c.ca || "",
+      ghiChu: c.ghiChu || "",
+    });
+    setEditCpWarn("");
+  };
+  const cancelEditCheckpoint = () => { setEditingCpId(null); setEditCpWarn(""); };
+  const saveEditCheckpoint = async () => {
+    if (!editCpForm.ngay) { setEditCpWarn("Vui lòng chọn Ngày trực trước khi lưu."); return; }
+    setEditCpWarn("");
+    const chotLabel = editCpForm.chot === "Khác" ? (editCpForm.chotKhac.trim() || "Khác") : `Chốt ${editCpForm.chot}`;
+    await checkpoint.setItems(checkpoint.items.map((i) => (i.id === editingCpId ? { ...i, ...editCpForm, chotLabel } : i)));
+    setEditingCpId(null);
+  };
+
   return (
     <div>
-      <SectionHeader icon={Shield} eyebrow="Phân công" title="Trực chỉ huy trung đội"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo lượt trực mới</Btn>} />
+      <SectionHeader compact icon={Shield} eyebrow="Phân công" title="Trực chỉ huy trung đội"
+        action={perm.canManage && <Btn size="sm" onClick={() => setShowForm((s) => !s)}><Plus size={14} /> Tạo lượt trực mới</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
@@ -1629,49 +1657,52 @@ function DutyScheduleTab({ user, perm }) {
 
       {loading || roster.loading ? <LoadingRow /> : duty.length === 0 ? <EmptyState text="Chưa có lượt trực chỉ huy nào." /> : (
         <div className="mb-8">
-          <div className="mb-3 max-w-lg">
-            <Field label="Xem lượt trực (chọn lại lượt trước để xem — dữ liệu cũ được giữ để quy trách nhiệm)">
-              <select className={inputCls} style={inputStyle} value={viewDutyId || ""} onChange={(e) => setViewDutyId(Number(e.target.value))}>
+          <div className="mb-2.5 max-w-lg">
+            <label className="block mb-3">
+              <span className="f-mono text-[10px] uppercase tracking-widest block mb-1" style={{ color: T.inkSoft }}>
+                Xem lượt trực (chọn lại lượt trước để xem — dữ liệu cũ được giữ để quy trách nhiệm)
+              </span>
+              <select className={inputCls} style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px" }} value={viewDutyId || ""} onChange={(e) => setViewDutyId(Number(e.target.value))}>
                 {sortedDuty.map((e) => (
                   <option key={e.id} value={e.id}>{dutyLabel(e)}</option>
                 ))}
               </select>
-            </Field>
+            </label>
           </div>
 
           {viewDuty && (() => {
             const isPast = viewDuty.toDate && viewDuty.toDate < todayStr;
             const roleOf = roster.items.find((m) => normalizeName(m.name) === normalizeName(viewDuty.commanderName))?.role || "";
             return (
-              <div className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${isPast ? T.inkSoft : T.red}` }}>
-                <div className="f-mono text-xs" style={{ color: T.inkSoft }}>
+              <div className="p-3" style={{ background: "#fff", borderLeft: `4px solid ${isPast ? T.inkSoft : T.red}` }}>
+                <div className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
                   {viewDuty.fromTime || "—"} {viewDuty.fromDate ? new Date(viewDuty.fromDate).toLocaleDateString("vi-VN") : "—"}
                   {" → "}
                   {viewDuty.toTime || "—"} {viewDuty.toDate ? new Date(viewDuty.toDate).toLocaleDateString("vi-VN") : "—"}
                   {isPast && <span className="ml-2 f-mono uppercase tracking-wider" style={{ color: T.amberDark }}>· Đã qua — lưu để quy trách nhiệm</span>}
                 </div>
-                <div className="f-body text-base font-semibold mt-1" style={{ color: T.ink }}>
-                  {viewDuty.commanderName || "—"} {roleOf && <span className="f-mono text-xs font-normal" style={{ color: T.inkSoft }}>({roleOf})</span>}
+                <div className="f-body text-sm font-semibold mt-1" style={{ color: T.ink }}>
+                  {viewDuty.commanderName || "—"} {roleOf && <span className="f-mono text-[10.5px] font-normal" style={{ color: T.inkSoft }}>({roleOf})</span>}
                 </div>
-                {viewDuty.ghiChu && <div className="f-body text-sm mt-1" style={{ color: T.inkSoft }}>{viewDuty.ghiChu}</div>}
+                {viewDuty.ghiChu && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{viewDuty.ghiChu}</div>}
                 {viewDuty.url && (
                   isImage(viewDuty.url) ? (
                     <a href={viewDuty.url} target="_blank" rel="noreferrer" className="block mt-2">
                       <img src={viewDuty.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
                     </a>
                   ) : (
-                    <a href={viewDuty.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
-                      <Paperclip size={12} /> Xem file đính kèm
+                    <a href={viewDuty.url} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                      <Paperclip size={11} /> Xem file đính kèm
                     </a>
                   )
                 )}
-                <div className="mt-3">
+                <div className="mt-2.5">
                   {perm.canManage && (
                     isPast ? (
-                      <span className="f-mono text-[10.5px] italic" style={{ color: T.inkSoft }}>Đã kết thúc — không thể xoá để quy trách nhiệm</span>
+                      <span className="f-mono text-[10px] italic" style={{ color: T.inkSoft }}>Đã kết thúc — không thể xoá để quy trách nhiệm</span>
                     ) : (
-                      <button onClick={() => remove(viewDuty.id)} className="inline-flex items-center gap-1 f-mono text-xs" style={{ color: T.red }}>
-                        <Trash2 size={14} /> Xoá lượt trực này
+                      <button onClick={() => remove(viewDuty.id)} className="inline-flex items-center gap-1 f-mono text-[10.5px]" style={{ color: T.red }}>
+                        <Trash2 size={12} /> Xoá lượt trực này
                       </button>
                     )
                   )}
@@ -1683,8 +1714,8 @@ function DutyScheduleTab({ user, perm }) {
       )}
 
       {/* ---- Phân công trực chốt ---- */}
-      <SectionHeader icon={MapPin} eyebrow="Phân công" title="Trực chốt theo tiểu đội"
-        action={perm.canManage && <Btn onClick={() => setShowCForm((s) => !s)}><Plus size={16} /> Phân công chốt</Btn>} />
+      <SectionHeader compact icon={MapPin} eyebrow="Phân công" title="Trực chốt theo tiểu đội"
+        action={perm.canManage && <Btn size="sm" onClick={() => setShowCForm((s) => !s)}><Plus size={14} /> Phân công chốt</Btn>} />
 
       {perm.canManage && showCForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
@@ -1713,24 +1744,65 @@ function DutyScheduleTab({ user, perm }) {
 
       {checkpoint.loading ? <LoadingRow /> : sortedCheckpoints.length === 0 ? <EmptyState text="Chưa có phân công trực chốt nào." /> : (
         <div className="overflow-x-auto overflow-y-auto stamp-border mb-8" style={{ background: "#fff", maxHeight: 290 }}>
-          <table className="w-full text-sm f-body">
+          <table className="w-full text-xs f-body">
             <thead>
-              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
-                <th className="text-left px-3 py-2">Ngày</th><th className="text-left px-3 py-2">Chốt</th>
-                <th className="text-left px-3 py-2">Tiểu đội</th><th className="text-left px-3 py-2">Ca trực</th>
-                <th className="text-left px-3 py-2">Ghi chú</th><th className="px-3 py-2"></th>
+              <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                <th className="text-left px-2.5 py-1.5">Ngày</th><th className="text-left px-2.5 py-1.5">Chốt</th>
+                <th className="text-left px-2.5 py-1.5">Tiểu đội</th><th className="text-left px-2.5 py-1.5">Ca trực</th>
+                <th className="text-left px-2.5 py-1.5">Ghi chú</th><th className="px-2.5 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
               {sortedCheckpoints.map((c, i) => (
-                <tr key={c.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
-                  <td className="px-3 py-2 f-mono">{new Date(c.ngay).toLocaleDateString("vi-VN")}</td>
-                  <td className="px-3 py-2 font-medium">{c.chotLabel}</td>
-                  <td className="px-3 py-2 f-mono">TĐ{c.tieuDoi}</td>
-                  <td className="px-3 py-2 f-mono">{c.ca || "—"}</td>
-                  <td className="px-3 py-2" style={{ color: T.inkSoft }}>{c.ghiChu || "—"}</td>
-                  <td className="px-3 py-2 text-right">{perm.canManage && <button onClick={() => removeCheckpoint(c.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}</td>
-                </tr>
+                editingCpId === c.id ? (
+                  <tr key={c.id} style={{ background: T.paper }}>
+                    <td colSpan={6} className="px-3 py-3">
+                      <FormWarning message={editCpWarn} />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <Field label="Chốt số">
+                          <select className={inputCls} style={inputStyle} value={editCpForm.chot} onChange={(e) => setEditCpForm({ ...editCpForm, chot: e.target.value })}>
+                            {CHOT_LIST.map((ch) => <option key={ch} value={ch}>Chốt {ch}</option>)}
+                            <option value="Khác">Khác (tự nhập)</option>
+                          </select>
+                        </Field>
+                        {editCpForm.chot === "Khác" && (
+                          <Field label="Tên chốt (tự nhập)"><input className={inputCls} style={inputStyle} value={editCpForm.chotKhac} onChange={(e) => setEditCpForm({ ...editCpForm, chotKhac: e.target.value })} /></Field>
+                        )}
+                        <Field label="Tiểu đội trực">
+                          <select className={inputCls} style={inputStyle} value={editCpForm.tieuDoi} onChange={(e) => setEditCpForm({ ...editCpForm, tieuDoi: e.target.value })}>
+                            <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
+                            <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
+                          </select>
+                        </Field>
+                        <Field label="Ngày trực" required><input type="date" className={inputCls} style={inputStyle} value={editCpForm.ngay} onChange={(e) => setEditCpForm({ ...editCpForm, ngay: e.target.value })} /></Field>
+                        <Field label="Ca trực"><input className={inputCls} style={inputStyle} value={editCpForm.ca} onChange={(e) => setEditCpForm({ ...editCpForm, ca: e.target.value })} /></Field>
+                        <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={editCpForm.ghiChu} onChange={(e) => setEditCpForm({ ...editCpForm, ghiChu: e.target.value })} /></Field>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Btn onClick={saveEditCheckpoint}>Lưu</Btn>
+                        <Btn variant="outline" onClick={cancelEditCheckpoint}>Huỷ</Btn>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={c.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                    <td className="px-2.5 py-1.5 f-mono">{new Date(c.ngay).toLocaleDateString("vi-VN")}</td>
+                    <td className="px-2.5 py-1.5 font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        {c.chotLabel}
+                        {perm.canManage && (
+                          <button onClick={() => startEditCheckpoint(c)} title="Sửa thông tin (khi có sai sót)">
+                            <Pencil size={12} style={{ color: T.green }} />
+                          </button>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-2.5 py-1.5 f-mono">TĐ{c.tieuDoi}</td>
+                    <td className="px-2.5 py-1.5 f-mono">{c.ca || "—"}</td>
+                    <td className="px-2.5 py-1.5" style={{ color: T.inkSoft }}>{c.ghiChu || "—"}</td>
+                    <td className="px-2.5 py-1.5 text-right">{perm.canManage && <button onClick={() => removeCheckpoint(c.id)}><Trash2 size={13} style={{ color: T.red }} /></button>}</td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
