@@ -40,6 +40,14 @@ function isCommandRoleForName(name, rosterItems) {
   return Boolean(rosterMatch && (rosterMatch.role === "Trung đội trưởng" || rosterMatch.role === "Trung đội phó"));
 }
 
+// Kiểm tra một cái tên có phải Trung đội trưởng/phó HOẶC Tiểu đội trưởng/phó hay không —
+// dùng riêng để cấp quyền vào "Phòng trò chuyện chỉ huy" (rộng hơn isCommandRoleForName ở trên).
+function isSquadCommandRoleForName(name, rosterItems) {
+  const rosterMatch = (rosterItems || []).find((m) => normalizeName(m.name) === normalizeName(name));
+  const COMMAND_CHAT_ROLES = ["Trung đội trưởng", "Trung đội phó", "Tiểu đội trưởng", "Tiểu đội phó"];
+  return Boolean(rosterMatch && COMMAND_CHAT_ROLES.includes(rosterMatch.role));
+}
+
 const FONT_STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
 .f-display { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; }
@@ -496,6 +504,8 @@ function useRole(user, isAdminLogin) {
     isTreasurer,
     canManageFund: canManage || isTreasurer,
     isCommandRole,
+    // Quyền vào "Phòng trò chuyện chỉ huy": Quản trị, Trung đội trưởng/phó, Tiểu đội trưởng/phó
+    canAccessCommandChat: role === "admin" || isSquadCommandRoleForName(user, rosterItems),
     title: rosterMatch?.role || null,
     isOwner: (ownerName) => normalizeName(ownerName) === normalizeName(user),
   };
@@ -2986,7 +2996,7 @@ function BoardTab({ user, perm }) {
 
   return (
     <div>
-      <SectionHeader icon={MessageSquare} eyebrow="Trao đổi" title="Bảng tin trung đội" />
+      <SectionHeader icon={MessageSquare} eyebrow="Trao đổi" title="Phòng trò chuyện chung Trung đội" />
 
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
         <FormWarning message={warn} />
@@ -3039,11 +3049,120 @@ function BoardTab({ user, perm }) {
   );
 }
 
+/* ============ TAB: PHÒNG TRÒ CHUYỆN CHỈ HUY ============
+   Chỉ Quản trị, Trung đội trưởng/phó, Tiểu đội trưởng/phó mới vào được (perm.canAccessCommandChat).
+   Dữ liệu lưu riêng ở "commandChat", tách biệt hoàn toàn với "posts" (Phòng trò chuyện chung),
+   nên thành viên thường không xem/gửi được dù có cố tình truy cập.
+*/
+function CommandChatTab({ user, perm }) {
+  const { items, setItems, loading } = useSharedList("commandChat");
+  const [content, setContent] = useState("");
+  const [replyOpen, setReplyOpen] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [warn, setWarn] = useState("");
+  const [replyWarn, setReplyWarn] = useState("");
+
+  // Chốt chặn an toàn: dù có cách nào chuyển được vào tab này, không có quyền thì cũng không thấy nội dung
+  if (!perm.canAccessCommandChat) {
+    return (
+      <div>
+        <SectionHeader icon={Lock} eyebrow="Giới hạn truy cập" title="Phòng trò chuyện chỉ huy" />
+        <div className="stamp-border p-6 text-center" style={{ background: "#fff" }}>
+          <Lock size={28} className="mx-auto mb-2" style={{ color: T.inkSoft }} />
+          <p className="f-body text-sm" style={{ color: T.inkSoft }}>
+            Mục này chỉ dành cho Trung đội trưởng, Trung đội phó, Tiểu đội trưởng, Tiểu đội phó và Quản trị.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const post = async () => {
+    if (!content.trim()) { setWarn("Vui lòng nhập nội dung trước khi đăng."); return; }
+    setWarn("");
+    await setItems([{ id: Date.now(), author: user, content, date: new Date().toISOString(), replies: [] }, ...items]);
+    setContent("");
+  };
+  const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const reply = async (id) => {
+    if (!replyText.trim()) { setReplyWarn("Vui lòng nhập nội dung trả lời trước khi gửi."); return; }
+    setReplyWarn("");
+    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, date: new Date().toISOString() }] } : p));
+    setReplyText("");
+    setReplyOpen(null);
+  };
+  const toggleReaction = async (id) => setItems(items.map((p) => {
+    if (p.id !== id) return p;
+    const reactions = p.reactions || [];
+    const mine = reactions.includes(user);
+    return { ...p, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
+  }));
+
+  return (
+    <div>
+      <SectionHeader icon={Lock} eyebrow="Riêng chỉ huy" title="Phòng trò chuyện chỉ huy" />
+
+      <div className="f-body text-xs mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.green, color: T.paper }}>
+        <Lock size={14} />
+        Chỉ Trung đội trưởng, Trung đội phó, Tiểu đội trưởng, Tiểu đội phó và Quản trị mới xem và trao đổi được ở đây.
+      </div>
+
+      <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
+        <FormWarning message={warn} />
+        <textarea rows={2} className={inputCls} style={inputStyle} placeholder="Trao đổi riêng với chỉ huy…" value={content} onChange={(e) => setContent(e.target.value)} />
+        <div className="mt-2"><Btn onClick={post}>Đăng</Btn></div>
+      </div>
+
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có nội dung trao đổi nào." /> : (
+        <div className="space-y-3">
+          {items.map((p) => (
+            <div key={p.id} className="p-4" style={{ background: "#fff" }}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
+                  <p className="f-body text-sm mt-1" style={{ color: T.ink }}>{p.content}</p>
+                  <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>{new Date(p.date).toLocaleString("vi-VN")}</div>
+                </div>
+                {(perm.isAdmin || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+              </div>
+
+              <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
+
+              {p.replies.length > 0 && (
+                <div className="mt-3 ml-4 pl-3 space-y-2" style={{ borderLeft: `2px solid ${T.paperDark}` }}>
+                  {p.replies.map((r, idx) => (
+                    <div key={idx}>
+                      <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
+                      <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {replyOpen === p.id ? (
+                <div className="mt-2">
+                  {replyOpen === p.id && <FormWarning message={replyWarn} />}
+                  <div className="flex gap-2">
+                    <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
+                    <Btn onClick={() => reply(p.id)}>Gửi</Btn>
+                  </div>
+                </div>
+              ) : (
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); }}>Trả lời</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ TAB: PHÂN QUYỀN (chỉ quản trị) ============ */
 const ALL_DATA_KEYS = [
   "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest",
   "outings", "outingLock", "attendance", "docs", "scores",
-  "fund", "fundConfig", "posts", "polls", "roster", "permissions", "authConfig",
+  "fund", "fundConfig", "posts", "commandChat", "polls", "roster", "rosterLeaderInfo", "rosterSelfEntry", "permissions", "authConfig",
 ];
 
 function BackupSection() {
@@ -3293,7 +3412,7 @@ const TABS = [
   { id: "scores", label: "Điểm rèn luyện", icon: Award },
   { id: "fund", label: "Quỹ trung đội", icon: Wallet },
   { id: "poll", label: "Lấy ý kiến", icon: ClipboardCheck },
-  { id: "board", label: "Bảng tin", icon: MessageSquare },
+  { id: "board", label: "Phòng trò chuyện chung Trung đội", icon: MessageSquare },
 ];
 
 export default function App() {
@@ -3356,6 +3475,7 @@ export default function App() {
       case "fund": return <FundTab user={user} perm={perm} />;
       case "poll": return <PollTab user={user} perm={perm} />;
       case "board": return <BoardTab user={user} perm={perm} />;
+      case "commandChat": return <CommandChatTab user={user} perm={perm} />;
       case "permissions": return <PermissionsTab permissions={permissions} setPermissions={setPermissions} permLoading={permLoading} />;
       case "password": return <PasswordTab user={user} perm={perm} />;
       default: return null;
@@ -3364,6 +3484,7 @@ export default function App() {
 
   const visibleTabs = [
     ...TABS,
+    ...(perm.canAccessCommandChat ? [{ id: "commandChat", label: "Phòng trò chuyện chỉ huy", icon: Lock }] : []),
     ...(perm.isAdmin || perm.isCommandRole ? [{ id: "password", label: "Đổi mật khẩu", icon: KeyRound }] : []),
     ...(perm.isAdmin ? [{ id: "permissions", label: "Phân quyền", icon: Shield }] : []),
   ];
