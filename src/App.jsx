@@ -1023,19 +1023,19 @@ function RosterTab({ perm, user }) {
 
   return (
     <div>
-      <SectionHeader icon={Users} eyebrow={`Quân số: ${items.length}`} title="Danh sách trung đội"
-        action={canAddMember && <Btn onClick={() => (showForm ? setShowForm(false) : openForm())}><Plus size={16} /> {perm.canManage ? "Thêm thành viên" : "Thêm thông tin của tôi"}</Btn>} />
+      <SectionHeader compact icon={Users} eyebrow={`Quân số: ${items.length}`} title="Danh sách trung đội"
+        action={canAddMember && <Btn size="sm" onClick={() => (showForm ? setShowForm(false) : openForm())}><Plus size={14} /> {perm.canManage ? "Thêm thành viên" : "Thêm thông tin của tôi"}</Btn>} />
 
       {/* ---- Bật/tắt cho phép thành viên tự nhập thông tin của mình ---- */}
       {canEditAll && (
-        <div className="stamp-border p-4 mb-5" style={{ background: "#FBF3DD" }}>
-          <div className="f-display text-[10px] uppercase tracking-widest mb-2" style={{ color: T.amberDark }}>Cho phép tự nhập thông tin quân số</div>
+        <div className="stamp-border p-3 mb-3" style={{ background: "#FBF3DD" }}>
+          <div className="f-display text-[10px] uppercase tracking-widest mb-1.5" style={{ color: T.amberDark }}>Cho phép tự nhập thông tin quân số</div>
           <div className="flex flex-wrap items-center gap-3">
-            <Btn variant={selfEntryOpen ? "danger" : "outline"} onClick={toggleSelfEntry} disabled={selfEntryLoading}>
+            <Btn size="sm" variant={selfEntryOpen ? "danger" : "outline"} onClick={toggleSelfEntry} disabled={selfEntryLoading}>
               {selfEntryOpen ? "Đang mở — bấm để đóng" : "Mở cho thành viên tự nhập"}
             </Btn>
           </div>
-          <p className="f-body text-[10.5px] leading-snug mt-2" style={{ color: T.inkSoft }}>
+          <p className="f-body text-[10.5px] leading-snug mt-1.5" style={{ color: T.inkSoft }}>
             Khi mở, mọi thành viên (kể cả chưa được gán quyền quản lý) có thể tự thêm thông tin của chính mình
             vào danh sách quân số. Khi đóng (mặc định), chỉ Quản trị / Cán bộ được gán quyền mới thêm được
             thành viên mới — còn việc sửa thông tin từng dòng thì chỉ người có tên sẵn trong danh sách (hoặc chỉ huy)
@@ -1045,8 +1045,8 @@ function RosterTab({ perm, user }) {
       )}
 
       {selfEntryOpen && !perm.canManage && (
-        <div className="f-body text-sm mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.amber, color: T.greenDark }}>
-          <Users size={16} />
+        <div className="f-body text-xs mb-3 px-3 py-2 flex items-center gap-2" style={{ background: T.amber, color: T.greenDark }}>
+          <Users size={14} />
           {hasOwnEntry
             ? <span>Chỉ huy đang cho phép tự nhập thông tin — bạn đã có thông tin trong danh sách, bấm biểu tượng bút chì ở dòng của mình để chỉnh sửa.</span>
             : <span>Chỉ huy đang cho phép tự nhập thông tin — bấm "Thêm thông tin của tôi" để tự thêm thông tin của bạn vào danh sách.</span>}
@@ -1054,45 +1054,45 @@ function RosterTab({ perm, user }) {
       )}
 
       {/* ---- Ô riêng: thông tin liên hệ Trung đội trưởng ---- */}
-      <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <span className="f-display text-sm uppercase tracking-wider" style={{ color: T.amberDark }}>Liên hệ Trung đội trưởng</span>
+      <div className="stamp-border p-3 mb-3" style={{ background: "#fff" }}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <span className="f-display text-[11.5px] uppercase tracking-wider" style={{ color: T.amberDark }}>Liên hệ Trung đội trưởng</span>
           {canEditLeaderInfo && (
-            <Btn variant="outline" onClick={() => setShowLeaderForm((s) => !s)}>
-              <Pencil size={14} /> {leaderInfo.leaderName ? "Sửa thông tin" : "Nhập thông tin"}
+            <Btn size="sm" variant="outline" onClick={() => setShowLeaderForm((s) => !s)}>
+              <Pencil size={12} /> {leaderInfo.leaderName ? "Sửa thông tin" : "Nhập thông tin"}
             </Btn>
           )}
         </div>
 
         {canEditLeaderInfo && showLeaderForm && (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2.5 p-2.5" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
             <Field label="Họ và tên Trung đội trưởng">
               <input className={inputCls} style={inputStyle} value={leaderForm.leaderName} onChange={(e) => setLeaderForm({ ...leaderForm, leaderName: e.target.value })} placeholder="VD: Nguyễn Văn A" />
             </Field>
             <Field label="Số điện thoại liên hệ">
               <input className={inputCls} style={inputStyle} value={leaderForm.leaderPhone} onChange={(e) => setLeaderForm({ ...leaderForm, leaderPhone: e.target.value })} placeholder="VD: 0912345678" />
             </Field>
-            <div className="md:col-span-2"><Btn onClick={saveLeaderInfo}>Lưu thông tin</Btn></div>
+            <div className="md:col-span-2"><Btn size="sm" onClick={saveLeaderInfo}>Lưu thông tin</Btn></div>
           </div>
         )}
 
         {!leaderLoading && !showLeaderForm && (
           leaderInfo.leaderName ? (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4 mt-2">
-              <span className="f-body text-sm" style={{ color: T.ink }}>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5">
+              <span className="f-body text-xs" style={{ color: T.ink }}>
                 Trung đội trưởng: <b>{leaderInfo.leaderName}</b>
               </span>
               {leaderInfo.leaderPhone && (
-                <span className="f-mono text-xs" style={{ color: T.inkSoft }}>SĐT: {leaderInfo.leaderPhone}</span>
+                <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>SĐT: {leaderInfo.leaderPhone}</span>
               )}
             </div>
           ) : (
-            <div className="f-body text-xs italic mt-2" style={{ color: T.inkSoft }}>Chưa cập nhật thông tin liên hệ Trung đội trưởng.</div>
+            <div className="f-body text-[10.5px] italic mt-1.5" style={{ color: T.inkSoft }}>Chưa cập nhật thông tin liên hệ Trung đội trưởng.</div>
           )
         )}
       </div>
 
-      <div className="flex justify-end mb-3 -mt-2">
+      <div className="flex justify-end mb-1.5 -mt-1">
         <button
           onClick={() => setSearchOpen((s) => { const next = !s; if (!next) setSearch(""); return next; })}
           title="Tìm kiếm"
@@ -1105,7 +1105,7 @@ function RosterTab({ perm, user }) {
       </div>
 
       {searchOpen && (
-        <div className="mb-4 relative">
+        <div className="mb-2.5 relative">
           <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.inkSoft }} />
           <input
             autoFocus
@@ -1185,7 +1185,7 @@ function RosterTab({ perm, user }) {
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : filteredItems.length === 0 ? (
         <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
       ) : (
-        <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 460 }}>
+        <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 370 }}>
           <table className="w-full f-body" style={{ fontSize: "12.5px", borderCollapse: "collapse" }}>
             <thead>
               <tr className="f-mono text-[9.5px] uppercase tracking-widest" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
