@@ -21,7 +21,16 @@ const T = {
   gold: "#C9A227",
   ink: "#20241F",
   inkSoft: "#5B5F52",
+  selectBg: "#DCEAFC",
+  selectBorder: "#2F6FBF",
 };
+
+// Trộn thêm hiệu ứng tô xanh nước biển khi dòng đang được chọn (dùng chung cho mọi danh sách)
+function withSelect(style, selected) {
+  return selected
+    ? { ...style, background: T.selectBg, boxShadow: `inset 0 0 0 2px ${T.selectBorder}` }
+    : style;
+}
 
 const UNIT_PASSWORD_DEFAULT = "LT31B2"; // Mật khẩu chung mặc định — có thể đổi ngay trên web ở mục "Đổi mật khẩu"
 const ADMIN_PASSWORD_DEFAULT = "LT31ADMIN"; // Mật khẩu quản trị mặc định — có thể đổi ngay trên web ở mục "Đổi mật khẩu"
@@ -814,6 +823,8 @@ function AnnouncementsTab({ user, perm }) {
     return { ...a, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
   }));
   const canDelete = (a) => perm.canManage || perm.isOwner(a.author);
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   const sorted = [...items].sort((a, b) => (b.pinned - a.pinned) || (new Date(b.date) - new Date(a.date)));
 
@@ -849,7 +860,12 @@ function AnnouncementsTab({ user, perm }) {
       {loading ? <LoadingRow /> : sorted.length === 0 ? <EmptyState text="Chưa có thông báo nào." /> : (
         <div className="space-y-3">
           {sorted.map((a) => (
-            <div key={a.id} className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${a.pinned ? T.amber : T.green}` }}>
+            <div
+              key={a.id}
+              onClick={() => toggleSelect(a.id)}
+              className="p-4 cursor-pointer"
+              style={withSelect({ background: "#fff", borderLeft: `4px solid ${a.pinned ? T.amber : T.green}` }, selectedId === a.id)}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -963,6 +979,8 @@ function RosterTab({ perm, user }) {
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   // Sửa được dòng của chính mình (dù không phải chỉ huy)
   const canEditRow = (m) => canEditAll || perm.isOwner(m.name);
@@ -1203,7 +1221,9 @@ function RosterTab({ perm, user }) {
               {filteredItems.map((m, i) => (
                 <tr
                   key={m.id}
-                  style={{ background: i % 2 ? T.paper : "#fff", borderBottom: `1px solid ${T.paperDark}` }}
+                  onClick={() => toggleSelect(m.id)}
+                  className="cursor-pointer"
+                  style={withSelect({ background: i % 2 ? T.paper : "#fff", borderBottom: `1px solid ${T.paperDark}` }, selectedId === m.id)}
                 >
                   <td className="px-2.5 py-2 f-mono font-bold" style={{ color: T.ink, borderRight: `1px solid ${T.paperDark}` }}>{m.stt || "—"}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.msv || "—"}</td>
@@ -1278,8 +1298,9 @@ function RosterTab({ perm, user }) {
             return (
               <div
                 key={m.id}
-                className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap"
-                style={{ borderBottom: i < squadOrdered.length - 1 ? `1px solid ${T.paperDark}` : "none" }}
+                onClick={() => toggleSelect(m.id)}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap cursor-pointer"
+                style={withSelect({ borderBottom: i < squadOrdered.length - 1 ? `1px solid ${T.paperDark}` : "none" }, selectedId === m.id)}
               >
                 <div className="flex items-center gap-3">
                   <span
@@ -1593,6 +1614,8 @@ function DutyScheduleTab({ user, perm }) {
   };
   const removeCheckpoint = async (id) => checkpoint.setItems(checkpoint.items.filter((i) => i.id !== id));
   const sortedCheckpoints = [...checkpoint.items].sort((a, b) => itemCreatedAt(b) - itemCreatedAt(a));
+  const [selectedCpId, setSelectedCpId] = useState(null);
+  const toggleSelectCp = (id) => setSelectedCpId((s) => (s === id ? null : id));
 
   // Sửa phân công trực chốt khi có sai sót (chỉ huy sửa được)
   const [editingCpId, setEditingCpId] = useState(null);
@@ -1788,7 +1811,7 @@ function DutyScheduleTab({ user, perm }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={c.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                  <tr key={c.id} onClick={() => toggleSelectCp(c.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedCpId === c.id)}>
                     <td className="px-2.5 py-1.5 f-mono">{new Date(c.ngay).toLocaleDateString("vi-VN")}</td>
                     <td className="px-2.5 py-1.5 font-medium">
                       <span className="inline-flex items-center gap-1.5">
@@ -1996,6 +2019,8 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
   const canApprove = perm.isAdmin || perm.isCommandRole;
 
   const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const toggleSelectMember = (id) => setSelectedMemberId((s) => (s === id ? null : id));
 
   return (
     <div className="stamp-border p-4" style={{ background: "#fff" }}>
@@ -2126,7 +2151,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                     </td>
                   </tr>
                 ) : (
-                  <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                  <tr key={m.id} onClick={() => toggleSelectMember(m.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedMemberId === m.id)}>
                     <td className="px-2 py-1.5 f-mono">{i + 1}</td>
                     <td className="px-2 py-1.5 font-medium">{m.hoTen}</td>
                     <td className="px-2 py-1.5 f-mono">{m.namSinh}</td>
@@ -2332,6 +2357,8 @@ function OutingTab({ user, perm }) {
   const rejected = dayItems.filter((o) => o.duyet === "Từ chối");
   const chuaVe = approved.filter((i) => i.trangThai === "Chưa về").length;
   const canAct = (o) => perm.canManage || perm.isOwner(o.dangKyBoi);
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   const duyetColor = { "Chờ duyệt": T.amberDark, "Đã duyệt": T.green, "Từ chối": T.red };
 
@@ -2357,7 +2384,11 @@ function OutingTab({ user, perm }) {
       );
     }
     return (
-      <div className="flex items-start justify-between gap-2 py-1.5 px-2 flex-wrap" style={{ background: "#fff", borderLeft: `3px solid ${duyetColor[o.duyet || "Chờ duyệt"]}` }}>
+      <div
+        onClick={() => toggleSelect(o.id)}
+        className="flex items-start justify-between gap-2 py-1.5 px-2 flex-wrap cursor-pointer"
+        style={withSelect({ background: "#fff", borderLeft: `3px solid ${duyetColor[o.duyet || "Chờ duyệt"]}` }, selectedId === o.id)}
+      >
         <div className="flex items-start gap-2">
           <div className="f-mono text-[10.5px] font-semibold shrink-0 w-6 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
           <div>
@@ -2539,6 +2570,7 @@ function OutingTab({ user, perm }) {
 function AttendanceTab({ user, perm }) {
   const roster = useSharedList("roster");
   const { items, setItems, loading } = useSharedList("attendance");
+  const [selectedStatId, setSelectedStatId] = useState(null);
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const STATUSES = ["Có mặt", "Vắng", "Phép", "Không phép", "Ốm"];
@@ -2644,7 +2676,7 @@ function AttendanceTab({ user, perm }) {
               </thead>
               <tbody>
                 {stats.map((m, i) => (
-                  <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                  <tr key={m.id} onClick={() => setSelectedStatId((s) => (s === m.id ? null : m.id))} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedStatId === m.id)}>
                     <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
                     <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
                     <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
@@ -2676,6 +2708,8 @@ function DocsTab({ user, perm }) {
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   const bySubject = items.reduce((acc, d) => {
     const k = d.subject || "Khác";
@@ -2708,7 +2742,7 @@ function DocsTab({ user, perm }) {
               <div className="f-display text-sm uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: T.amberDark }}><ChevronRight size={14} />{subj}</div>
               <div className="space-y-2">
                 {docs.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between p-3" style={{ background: "#fff" }}>
+                  <div key={d.id} onClick={() => toggleSelect(d.id)} className="flex items-center justify-between p-3 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === d.id)}>
                     <div>
                       <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{d.title}</div>
                       {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all" style={{ color: T.green }}>{d.url}</a>}
@@ -2740,6 +2774,8 @@ function ScoresTab({ perm }) {
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   return (
     <div>
@@ -2772,7 +2808,7 @@ function ScoresTab({ perm }) {
             </thead>
             <tbody>
               {items.map((s, i) => (
-                <tr key={s.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                <tr key={s.id} onClick={() => toggleSelect(s.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedId === s.id)}>
                   <td className="px-3 py-2 font-medium">{s.name}</td>
                   <td className="px-3 py-2">{s.category}</td>
                   <td className="px-3 py-2 f-mono font-semibold" style={{ color: T.green }}>{s.score}</td>
@@ -2834,6 +2870,8 @@ function FundTab({ user, perm }) {
 
   const total = items.reduce((sum, f) => sum + (f.type === "Thu" ? 1 : -1) * Number(f.amount || 0), 0);
   const fmt = (n) => n.toLocaleString("vi-VN") + " đ";
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   return (
     <div>
@@ -2935,7 +2973,12 @@ function FundTab({ user, perm }) {
                 <div className="md:col-span-3 flex gap-2"><Btn onClick={saveEdit}>Lưu thay đổi</Btn><Btn variant="outline" onClick={cancelEdit}>Huỷ</Btn></div>
               </div>
             ) : (
-              <div key={f.id} className="flex items-center justify-between p-3" style={{ background: "#fff", borderLeft: `4px solid ${f.type === "Thu" ? T.green : T.red}` }}>
+              <div
+                key={f.id}
+                onClick={() => toggleSelect(f.id)}
+                className="flex items-center justify-between p-3 cursor-pointer"
+                style={withSelect({ background: "#fff", borderLeft: `4px solid ${f.type === "Thu" ? T.green : T.red}` }, selectedId === f.id)}
+              >
                 <div>
                   <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{f.desc}</div>
                   <div className="f-mono text-[11px]" style={{ color: T.inkSoft }}>{f.by} · {new Date(f.date).toLocaleDateString("vi-VN")}</div>
@@ -3010,6 +3053,8 @@ function PollTab({ user, perm }) {
   };
 
   const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   return (
     <div>
@@ -3064,7 +3109,12 @@ function PollTab({ user, perm }) {
             const showResults = openResults[poll.id] || poll.closed || perm.canManage;
 
             return (
-              <div key={poll.id} className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${poll.closed ? T.inkSoft : T.green}` }}>
+              <div
+                key={poll.id}
+                onClick={() => toggleSelect(poll.id)}
+                className="p-4 cursor-pointer"
+                style={withSelect({ background: "#fff", borderLeft: `4px solid ${poll.closed ? T.inkSoft : T.green}` }, selectedId === poll.id)}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -3164,6 +3214,8 @@ function BoardTab({ user, perm }) {
     const mine = reactions.includes(user);
     return { ...p, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
   }));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   return (
     <div>
@@ -3178,7 +3230,7 @@ function BoardTab({ user, perm }) {
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có bài đăng nào." /> : (
         <div className="space-y-3">
           {items.map((p) => (
-            <div key={p.id} className="p-4" style={{ background: "#fff" }}>
+            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === p.id)}>
               <div className="flex justify-between items-start">
                 <div>
                   <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
@@ -3268,6 +3320,8 @@ function CommandChatTab({ user, perm }) {
     const mine = reactions.includes(user);
     return { ...p, reactions: mine ? reactions.filter((n) => n !== user) : [...reactions, user] };
   }));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   return (
     <div>
@@ -3287,7 +3341,7 @@ function CommandChatTab({ user, perm }) {
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có nội dung trao đổi nào." /> : (
         <div className="space-y-3">
           {items.map((p) => (
-            <div key={p.id} className="p-4" style={{ background: "#fff" }}>
+            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === p.id)}>
               <div className="flex justify-between items-start">
                 <div>
                   <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
@@ -3511,6 +3565,8 @@ function PermissionsTab({ permissions, setPermissions, permLoading }) {
     setNameInput("");
   };
   const revoke = async (id) => setPermissions(permissions.filter((p) => p.id !== id));
+  const [selectedId, setSelectedId] = useState(null);
+  const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
   const roleLabel = { can_bo: "Cán bộ (được xoá mọi nội dung)", thanh_vien: "Thành viên (chỉ thêm, tự xoá bài của mình)" };
 
@@ -3557,7 +3613,7 @@ function PermissionsTab({ permissions, setPermissions, permLoading }) {
             </thead>
             <tbody>
               {permissions.map((p, i) => (
-                <tr key={p.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                <tr key={p.id} onClick={() => toggleSelect(p.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedId === p.id)}>
                   <td className="px-3 py-2 font-medium">{p.name}</td>
                   <td className="px-3 py-2">{roleLabel[p.role] || p.role}</td>
                   <td className="px-3 py-2 text-right"><button onClick={() => revoke(p.id)} title="Gỡ quyền (về Thành viên mặc định)"><Trash2 size={14} style={{ color: T.red }} /></button></td>
