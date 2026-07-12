@@ -1508,20 +1508,68 @@ function StudyAppendixSection({ user, perm, loading, allItems, setAllItems, type
 /* ============ TAB: LỊCH TRỰC (+ PHÂN CÔNG TRỰC CHỐT) ============ */
 function DutyScheduleTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("schedule");
-  const [form, setForm] = useState({ date: "", type: "Trực ban", title: "", note: "", url: "" });
-  const [showForm, setShowForm] = useState(false);
+  const roster = useSharedList("roster");
   const [warn, setWarn] = useState("");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
+  // ---- Trực chỉ huy trung đội ----
+  // Chọn người trực chỉ huy từ danh sách Trung đội trưởng/Trung đội phó có sẵn trong Quân số (không tự nhập tên).
+  // Mỗi lượt trực có khung thời gian (từ giờ/ngày → đến giờ/ngày). Khi ngày hệ thống qua khỏi "đến ngày",
+  // trang tự động chuyển sang lượt trực hiện hành/kế tiếp — giống Phụ lục trực cuối tuần.
+  // Dữ liệu các lượt trực cũ KHÔNG bị xoá — được giữ lại để quy trách nhiệm, chỉ xem lại chứ không xoá được.
+  const commanderCandidates = roster.items.filter((m) => m.role === "Trung đội trưởng" || m.role === "Trung đội phó");
+  const duty = items.filter((i) => i.type === "Trực ban");
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const [form, setForm] = useState({ commanderName: "", fromDate: "", fromTime: "07:00", toDate: "", toTime: "07:00", ghiChu: "", url: "" });
+  const [showForm, setShowForm] = useState(false);
+
+  const computeCurrentId = (list) => {
+    if (list.length === 0) return null;
+    const active = list.find((e) => e.fromDate && e.toDate && e.fromDate <= todayStr && todayStr <= e.toDate);
+    if (active) return active.id;
+    const upcoming = [...list].filter((e) => e.fromDate > todayStr).sort((a, b) => a.fromDate.localeCompare(b.fromDate))[0];
+    if (upcoming) return upcoming.id;
+    const past = [...list].filter((e) => e.toDate < todayStr).sort((a, b) => b.toDate.localeCompare(a.toDate))[0];
+    return past ? past.id : list[0].id;
+  };
+
+  const currentDutyId = computeCurrentId(duty);
+  const [viewDutyId, setViewDutyId] = useState(currentDutyId);
+  const prevDutyDefaultRef = useRef(currentDutyId);
+
+  useEffect(() => {
+    if (viewDutyId === prevDutyDefaultRef.current && currentDutyId !== prevDutyDefaultRef.current) {
+      setViewDutyId(currentDutyId);
+    }
+    if (viewDutyId && !duty.find((e) => e.id === viewDutyId)) {
+      setViewDutyId(currentDutyId);
+    }
+    prevDutyDefaultRef.current = currentDutyId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDutyId, duty.length]);
+
   const add = async () => {
-    if (!form.title.trim() || !form.date) { setWarn("Vui lòng nhập đủ Ngày và Tiêu đề trước khi lưu."); return; }
+    if (!form.commanderName || !form.fromDate || !form.toDate) {
+      setWarn("Vui lòng chọn đủ Trực chỉ huy, Từ ngày và Đến ngày trước khi lưu.");
+      return;
+    }
     setWarn("");
-    await setItems([...items, { id: Date.now(), ...form, type: "Trực ban", by: user }]);
-    setForm({ date: "", type: "Trực ban", title: "", note: "", url: "" });
+    const newEntry = { id: Date.now(), ...form, type: "Trực ban", by: user };
+    await setItems([...items, newEntry]);
+    setForm({ commanderName: "", fromDate: "", fromTime: "07:00", toDate: "", toTime: "07:00", ghiChu: "", url: "" });
     setShowForm(false);
+    setViewDutyId(newEntry.id);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
-  const sorted = items.filter((i) => i.type === "Trực ban").sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const sortedDuty = [...duty].sort((a, b) => (b.fromDate || "").localeCompare(a.fromDate || ""));
+  const viewDuty = duty.find((e) => e.id === viewDutyId) || null;
+  const dutyLabel = (e) => {
+    const roleOf = roster.items.find((m) => normalizeName(m.name) === normalizeName(e.commanderName))?.role || "";
+    const status = e.toDate && e.toDate < todayStr ? "  (đã qua)" : e.fromDate && e.fromDate > todayStr ? "  (sắp tới)" : "  (đang diễn ra)";
+    return `${e.fromTime || "—"} ${e.fromDate ? new Date(e.fromDate).toLocaleDateString("vi-VN") : "—"} → ${e.toTime || "—"} ${e.toDate ? new Date(e.toDate).toLocaleDateString("vi-VN") : "—"} · ${e.commanderName || "—"}${roleOf ? ` (${roleOf})` : ""}${status}`;
+  };
 
   // ---- Phân công trực chốt ----
   const checkpoint = useSharedList("checkpoints");
@@ -1543,46 +1591,94 @@ function DutyScheduleTab({ user, perm }) {
 
   return (
     <div>
-      <SectionHeader icon={CalendarDays} eyebrow="Lịch" title="Lịch trực ban"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Thêm lịch trực</Btn>} />
+      <SectionHeader icon={Shield} eyebrow="Phân công" title="Trực chỉ huy trung đội"
+        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo lượt trực mới</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <Field label="Ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-          <Field label="Link ảnh/file đính kèm">
-            <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
-            <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
-          </Field>
-          <div className="md:col-span-2"><Btn onClick={add}>Lưu</Btn></div>
+          <div className="md:col-span-2">
+            <Field label="Trực chỉ huy (chọn từ Trung đội trưởng/Trung đội phó trong Quân số)" required>
+              <select className={inputCls} style={inputStyle} value={form.commanderName} onChange={(e) => setForm({ ...form, commanderName: e.target.value })}>
+                <option value="">— Chọn người trực chỉ huy —</option>
+                {commanderCandidates.map((m) => (
+                  <option key={m.id} value={m.name}>{m.name} ({m.role})</option>
+                ))}
+              </select>
+            </Field>
+            {commanderCandidates.length === 0 && (
+              <div className="f-body text-[11px] italic mt-1" style={{ color: T.red }}>
+                Chưa có ai được gán chức vụ Trung đội trưởng/Trung đội phó trong tab Quân số — hãy cập nhật chức vụ trước.
+              </div>
+            )}
+          </div>
+          <Field label="Từ ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} /></Field>
+          <Field label="Từ giờ"><input type="time" className={inputCls} style={inputStyle} value={form.fromTime} onChange={(e) => setForm({ ...form, fromTime: e.target.value })} /></Field>
+          <Field label="Đến ngày" required><input type="date" className={inputCls} style={inputStyle} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} /></Field>
+          <Field label="Đến giờ"><input type="time" className={inputCls} style={inputStyle} value={form.toTime} onChange={(e) => setForm({ ...form, toTime: e.target.value })} /></Field>
+          <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.ghiChu} onChange={(e) => setForm({ ...form, ghiChu: e.target.value })} /></Field></div>
+          <div className="md:col-span-2">
+            <Field label="Link ảnh/file đính kèm">
+              <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
+              <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
+            </Field>
+          </div>
+          <div className="md:col-span-2"><Btn onClick={add}>Lưu lượt trực</Btn></div>
         </div>
       )}
 
-      {loading ? <LoadingRow /> : sorted.length === 0 ? <EmptyState text="Chưa có lịch trực nào." /> : (
-        <div className="space-y-2 mb-8">
-          {sorted.map((s) => (
-            <div key={s.id} className="flex items-start gap-4 p-3 flex-wrap" style={{ background: "#fff", borderLeft: `4px solid ${T.red}` }}>
-              <div className="f-mono text-xs w-24 shrink-0 pt-0.5" style={{ color: T.inkSoft }}>{new Date(s.date).toLocaleDateString("vi-VN")}</div>
-              <div className="flex-1 min-w-[140px]">
-                <div className="f-body font-medium text-sm" style={{ color: T.ink }}>{s.title}</div>
-                {s.note && <div className="f-body text-xs" style={{ color: T.inkSoft }}>{s.note}</div>}
-                {s.url && (
-                  isImage(s.url) ? (
-                    <a href={s.url} target="_blank" rel="noreferrer" className="block mt-2">
-                      <img src={s.url} alt={s.title} className="max-w-[200px] max-h-40 stamp-border" />
+      {loading || roster.loading ? <LoadingRow /> : duty.length === 0 ? <EmptyState text="Chưa có lượt trực chỉ huy nào." /> : (
+        <div className="mb-8">
+          <div className="mb-3 max-w-lg">
+            <Field label="Xem lượt trực (chọn lại lượt trước để xem — dữ liệu cũ được giữ để quy trách nhiệm)">
+              <select className={inputCls} style={inputStyle} value={viewDutyId || ""} onChange={(e) => setViewDutyId(Number(e.target.value))}>
+                {sortedDuty.map((e) => (
+                  <option key={e.id} value={e.id}>{dutyLabel(e)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {viewDuty && (() => {
+            const isPast = viewDuty.toDate && viewDuty.toDate < todayStr;
+            const roleOf = roster.items.find((m) => normalizeName(m.name) === normalizeName(viewDuty.commanderName))?.role || "";
+            return (
+              <div className="p-4" style={{ background: "#fff", borderLeft: `4px solid ${isPast ? T.inkSoft : T.red}` }}>
+                <div className="f-mono text-xs" style={{ color: T.inkSoft }}>
+                  {viewDuty.fromTime || "—"} {viewDuty.fromDate ? new Date(viewDuty.fromDate).toLocaleDateString("vi-VN") : "—"}
+                  {" → "}
+                  {viewDuty.toTime || "—"} {viewDuty.toDate ? new Date(viewDuty.toDate).toLocaleDateString("vi-VN") : "—"}
+                  {isPast && <span className="ml-2 f-mono uppercase tracking-wider" style={{ color: T.amberDark }}>· Đã qua — lưu để quy trách nhiệm</span>}
+                </div>
+                <div className="f-body text-base font-semibold mt-1" style={{ color: T.ink }}>
+                  {viewDuty.commanderName || "—"} {roleOf && <span className="f-mono text-xs font-normal" style={{ color: T.inkSoft }}>({roleOf})</span>}
+                </div>
+                {viewDuty.ghiChu && <div className="f-body text-sm mt-1" style={{ color: T.inkSoft }}>{viewDuty.ghiChu}</div>}
+                {viewDuty.url && (
+                  isImage(viewDuty.url) ? (
+                    <a href={viewDuty.url} target="_blank" rel="noreferrer" className="block mt-2">
+                      <img src={viewDuty.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
                     </a>
                   ) : (
-                    <a href={s.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                    <a href={viewDuty.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
                       <Paperclip size={12} /> Xem file đính kèm
                     </a>
                   )
                 )}
+                <div className="mt-3">
+                  {perm.canManage && (
+                    isPast ? (
+                      <span className="f-mono text-[10.5px] italic" style={{ color: T.inkSoft }}>Đã kết thúc — không thể xoá để quy trách nhiệm</span>
+                    ) : (
+                      <button onClick={() => remove(viewDuty.id)} className="inline-flex items-center gap-1 f-mono text-xs" style={{ color: T.red }}>
+                        <Trash2 size={14} /> Xoá lượt trực này
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
-              {perm.canManage && <button onClick={() => remove(s.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-            </div>
-          ))}
+            );
+          })()}
         </div>
       )}
 
