@@ -897,6 +897,7 @@ function RosterTab({ perm, user }) {
   const [editWarn, setEditWarn] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedSquad, setSelectedSquad] = useState("1");
 
   // Ô riêng ghi thông tin liên hệ Trung đội trưởng (Họ và tên, SĐT) — chỉ huy tự tuỳ chỉnh nhập
   const { value: leaderInfo, setValue: setLeaderInfo, loading: leaderLoading } = useSingleDoc("rosterLeaderInfo", {
@@ -938,7 +939,10 @@ function RosterTab({ perm, user }) {
 
   const add = async () => {
     if (!canAddMember) { setWarn("Bạn không có quyền thêm thành viên vào lúc này."); return; }
-    if (!form.name.trim()) { setWarn("Vui lòng nhập Họ và tên trước khi lưu."); return; }
+    const missing =
+      !String(form.stt).trim() || !form.name.trim() || !form.role.trim() ||
+      !form.tieuDoi.trim() || !form.phone.trim() || !form.dob.trim();
+    if (missing) { setWarn("Bạn chưa nhập gì — vui lòng điền đầy đủ các mục có dấu * trước khi lưu."); return; }
     setWarn("");
     // Thành viên tự nhập (không có quyền quản lý) chỉ được thêm đúng thông tin của chính mình
     const finalForm = perm.canManage ? form : { ...form, name: user };
@@ -988,6 +992,22 @@ function RosterTab({ perm, user }) {
         return haystack.includes(q);
       })
     : sortedItems;
+
+  // ---- Danh sách theo tiểu đội: tự động lấy dữ liệu từ danh sách trung đội, chia theo 4 tiểu đội ----
+  // Thứ tự trong mỗi tiểu đội: #1 = Tiểu đội trưởng, #2 = Tiểu đội phó, còn lại là thành viên đánh số
+  // tiếp theo tăng dần (3, 4, 5…) theo đúng thứ tự STT của danh sách trung đội. Trung đội trưởng/phó
+  // thuộc tiểu đội nào thì được xếp vào phần thành viên của tiểu đội đó, kèm chú thích đúng chức vụ
+  // của họ (không chiếm vị trí Tiểu đội trưởng/phó).
+  const squadAll = sortedItems.filter((m) => (m.tieuDoi || "1") === selectedSquad);
+  const squadLeader = squadAll.filter((m) => m.role === "Tiểu đội trưởng");
+  const squadDeputy = squadAll.filter((m) => m.role === "Tiểu đội phó");
+  const squadOthers = squadAll.filter((m) => m.role !== "Tiểu đội trưởng" && m.role !== "Tiểu đội phó");
+  const squadOrdered = [...squadLeader, ...squadDeputy, ...squadOthers];
+  // Tổng quân số của từng tiểu đội (1 → 4), hiển thị kèm nút chọn tiểu đội
+  const squadCounts = ["1", "2", "3", "4"].reduce((acc, s) => {
+    acc[s] = items.filter((m) => (m.tieuDoi || "1") === s).length;
+    return acc;
+  }, {});
 
   return (
     <div>
@@ -1089,27 +1109,27 @@ function RosterTab({ perm, user }) {
       {canAddMember && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <Field label="Số thứ tự (STT)"><input type="number" className={inputCls} style={inputStyle} value={form.stt} onChange={(e) => setForm({ ...form, stt: e.target.value })} placeholder="VD: 1" /></Field>
+          <Field label="Số thứ tự (STT)" required><input type="number" className={inputCls} style={inputStyle} value={form.stt} onChange={(e) => setForm({ ...form, stt: e.target.value })} placeholder="VD: 1" /></Field>
           <Field label="Mã số học viên"><input className={inputCls} style={inputStyle} value={form.msv} onChange={(e) => setForm({ ...form, msv: e.target.value })} /></Field>
           <Field label="Họ và tên" required>
             <input className={inputCls} style={inputStyle} value={form.name} disabled={!perm.canManage} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Chức vụ">
-            <select className={inputCls} style={inputStyle} value={form.role} disabled={!perm.canManage} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <Field label="Chức vụ" required>
+            <select className={inputCls} style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
             </select>
           </Field>
-          <Field label="Tiểu đội">
+          <Field label="Tiểu đội" required>
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
               <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
               <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
             </select>
           </Field>
-          <Field label="Số điện thoại"><input className={inputCls} style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-          <Field label="Ngày tháng năm sinh"><input type="date" className={inputCls} style={inputStyle} value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} /></Field>
+          <Field label="Số điện thoại" required><input className={inputCls} style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+          <Field label="Ngày tháng năm sinh" required><input type="date" className={inputCls} style={inputStyle} value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} /></Field>
           {!perm.canManage && (
             <div className="md:col-span-2 f-body text-xs italic" style={{ color: T.inkSoft }}>
-              Bạn đang tự nhập thông tin của chính mình — Họ và tên, Chức vụ do chỉ huy quy định nên không tự đổi được.
+              Bạn đang tự nhập thông tin của chính mình — riêng Họ và tên được khoá theo đúng tên đăng nhập.
             </div>
           )}
           <div className="md:col-span-2"><Btn onClick={add}>{perm.canManage ? "Lưu" : "Lưu thông tin của tôi"}</Btn></div>
@@ -1195,6 +1215,88 @@ function RosterTab({ perm, user }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ---- Danh sách theo tiểu đội (tự động lấy dữ liệu từ danh sách trung đội ở trên) ---- */}
+      <div className="my-8" style={{ borderTop: `1px dashed ${T.paperDark}` }} />
+      <SectionHeader icon={Users} eyebrow={`Tiểu đội ${selectedSquad}: ${squadOrdered.length} quân nhân`} title="Danh sách tiểu đội" />
+      <p className="f-body text-xs mb-4 -mt-2" style={{ color: T.inkSoft }}>
+        Số 1 là Tiểu đội trưởng, số 2 là Tiểu đội phó, còn lại là thành viên đánh số tiếp theo tăng dần. Riêng Trung đội trưởng / Trung đội phó
+        thuộc tiểu đội nào sẽ được xếp vào thành viên của tiểu đội đó, kèm chú thích đúng chức vụ của họ.
+      </p>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["1", "2", "3", "4"].map((s) => (
+          <button
+            key={s}
+            onClick={() => setSelectedSquad(s)}
+            className="f-display text-xs uppercase tracking-wide px-4 py-2 btn-press rounded-sm inline-flex items-center gap-1.5"
+            style={{
+              background: selectedSquad === s ? T.amber : "transparent",
+              color: selectedSquad === s ? T.greenDark : T.green,
+              border: `1px solid ${T.green}`,
+            }}
+          >
+            Tiểu đội {s}
+            <span
+              className="f-mono inline-flex items-center justify-center rounded-full"
+              style={{
+                background: selectedSquad === s ? T.greenDark : T.green,
+                color: T.paper,
+                minWidth: 18, height: 18, fontSize: 9.5, fontWeight: 700, padding: "0 4px",
+              }}
+            >
+              {squadCounts[s]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {loading ? <LoadingRow /> : squadOrdered.length === 0 ? (
+        <EmptyState text={`Chưa có quân nhân nào thuộc Tiểu đội ${selectedSquad}.`} />
+      ) : (
+        <div className="stamp-border card-sheet" style={{ background: "#fff" }}>
+          {squadOrdered.map((m, i) => {
+            const isSquadCommand = m.role === "Tiểu đội trưởng" || m.role === "Tiểu đội phó";
+            const isPlatoonCommand = m.role === "Trung đội trưởng" || m.role === "Trung đội phó";
+            return (
+              <div
+                key={m.id}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap"
+                style={{ borderBottom: i < squadOrdered.length - 1 ? `1px solid ${T.paperDark}` : "none" }}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="f-mono text-xs font-semibold w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                    style={{
+                      background: isSquadCommand ? T.amber : "rgba(31,51,40,0.08)",
+                      color: isSquadCommand ? T.greenDark : T.green,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <div>
+                    <div className="f-body text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: T.ink }}>
+                      {m.name}
+                      {isPlatoonCommand && (
+                        <span
+                          className="f-display text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
+                          style={{ background: T.green, color: T.paper }}
+                        >
+                          {m.role}
+                        </span>
+                      )}
+                    </div>
+                    <div className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
+                      {!isPlatoonCommand ? m.role : "Thành viên"}{m.msv ? ` · ${m.msv}` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div className="f-mono text-xs shrink-0" style={{ color: T.inkSoft }}>{m.phone || "—"}</div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
