@@ -1413,6 +1413,12 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).filter((m) => m.id !== mid) } : e));
     await setEntries(next);
   };
+  // Trạng thái thẻ ra vào cổng cho từng người trong danh sách nghỉ cuối tuần (dùng chung logic với tab Ra ngoài)
+  const setMemberThe = async (mid, trangThai) => {
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).map((m) => (m.id === mid ? { ...m, theTrangThai: trangThai } : m)) } : e));
+    await setEntries(next);
+  };
+  const canApprove = perm.isAdmin || perm.isCommandRole;
 
   const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
 
@@ -1483,6 +1489,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                 <th className="text-left px-3 py-2">Họ và tên</th>
                 <th className="text-left px-3 py-2">Năm sinh</th>
                 <th className="text-left px-3 py-2">Tiểu đội</th>
+                <th className="text-left px-3 py-2">Thẻ ra vào cổng</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -1493,6 +1500,9 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                   <td className="px-3 py-2 font-medium">{m.hoTen}</td>
                   <td className="px-3 py-2 f-mono">{m.namSinh}</td>
                   <td className="px-3 py-2 f-mono">TĐ{m.tieuDoi}</td>
+                  <td className="px-3 py-2">
+                    <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {perm.canManage && <button onClick={() => removeMember(m.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
                   </td>
@@ -1524,6 +1534,55 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
    4) Qua 0h ngày mới, "today" tự đổi sang ngày kế tiếp nên mọi người lại đăng ký từ đầu; các ngày cũ chỉ cần
       chọn ngày ở ô "Xem theo ngày" là xem lại được danh sách chốt/đã duyệt/chờ duyệt của ngày đó.
 */
+/* Huy hiệu trạng thái Thẻ ra vào cổng — chỉ 1 trạng thái tại 1 thời điểm, có bước chỉ huy xác nhận đã trả */
+function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
+  const st = o.theTrangThai || "chua_nhan";
+  const LABEL = { chua_nhan: "Chưa nhận thẻ", da_nhan: "Đã nhận thẻ", cho_xac_nhan_tra: "Chờ chỉ huy xác nhận", da_tra: "Đã trả thẻ" };
+  const BG = { chua_nhan: "#EDE6D2", da_nhan: T.amberDark, cho_xac_nhan_tra: T.amber, da_tra: T.green };
+  const FG = { chua_nhan: T.inkSoft, da_nhan: "#fff", cho_xac_nhan_tra: T.ink, da_tra: "#fff" };
+
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      <span
+        className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1"
+        style={{ background: BG[st], color: FG[st], border: `1px solid ${BG[st]}` }}
+      >
+        {st === "da_tra" ? <CheckCircle2 size={11} /> : <Circle size={11} />} {LABEL[st]}
+      </span>
+
+      {canAct && st === "chua_nhan" && (
+        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[9.5px] underline btn-press" style={{ color: T.green }}>
+          Đánh dấu đã nhận thẻ
+        </button>
+      )}
+
+      {canAct && st === "da_nhan" && (
+        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[9.5px] underline btn-press" style={{ color: T.green }}>
+          Báo đã trả thẻ
+        </button>
+      )}
+
+      {st === "cho_xac_nhan_tra" && canApprove && (
+        <>
+          <button onClick={() => setThe(o.id, "da_tra")} title="Xác nhận đã trả thẻ ra vào cổng"><CheckCircle2 size={14} style={{ color: T.green }} /></button>
+          <button onClick={() => setThe(o.id, "da_nhan")} title="Chưa trả — vẫn đang giữ thẻ"><X size={14} style={{ color: T.red }} /></button>
+        </>
+      )}
+      {st === "cho_xac_nhan_tra" && !canApprove && canAct && (
+        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[9.5px] underline btn-press" style={{ color: T.inkSoft }}>
+          Huỷ báo (chưa trả)
+        </button>
+      )}
+
+      {st === "da_tra" && canApprove && (
+        <button onClick={() => setThe(o.id, "da_nhan")} title="Sửa lại nếu tick nhầm" className="f-mono text-[9.5px] underline btn-press" style={{ color: T.inkSoft }}>
+          Sửa lại
+        </button>
+      )}
+    </span>
+  );
+}
+
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
   const lock = useOutingLock();
@@ -1591,8 +1650,10 @@ function OutingTab({ user, perm }) {
   const setDuyet = async (id, duyet) => {
     await setItems(items.map((i) => (i.id === id ? { ...i, duyet, duyetBoi: user } : i)));
   };
-  const toggleThe = async (id, field) => {
-    await setItems(items.map((i) => (i.id === id ? { ...i, [field]: !i[field] } : i)));
+  // Trạng thái thẻ ra vào cổng: chỉ 1 trạng thái tại 1 thời điểm (không tick song song 2 cái)
+  // chua_nhan -> da_nhan -> cho_xac_nhan_tra (chờ chỉ huy xác nhận) -> da_tra
+  const setThe = async (id, trangThai) => {
+    await setItems(items.map((i) => (i.id === id ? { ...i, theTrangThai: trangThai } : i)));
   };
 
   const saveApprovalPhoto = async (url) => {
@@ -1663,34 +1724,7 @@ function OutingTab({ user, perm }) {
           <div>
             <div className="f-body text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: T.ink }}>
               {o.name}
-              <button
-                onClick={() => canAct(o) && toggleThe(o.id, "theNhan")}
-                disabled={!canAct(o)}
-                title={o.theNhan ? "Đã nhận thẻ ra vào cổng — bấm để bỏ tick" : "Chưa nhận thẻ — bấm để đánh dấu đã nhận thẻ"}
-                className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 btn-press"
-                style={{
-                  background: o.theNhan ? T.green : "#EDE6D2",
-                  color: o.theNhan ? "#fff" : T.inkSoft,
-                  border: `1px solid ${o.theNhan ? T.green : "#C9BFA5"}`,
-                  cursor: canAct(o) ? "pointer" : "default",
-                }}
-              >
-                {o.theNhan ? <CheckCircle2 size={11} /> : <Circle size={11} />} Nhận thẻ
-              </button>
-              <button
-                onClick={() => canAct(o) && toggleThe(o.id, "theTra")}
-                disabled={!canAct(o)}
-                title={o.theTra ? "Đã trả thẻ ra vào cổng — bấm để bỏ tick" : "Chưa trả thẻ — bấm để đánh dấu đã trả thẻ"}
-                className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 btn-press"
-                style={{
-                  background: o.theTra ? T.green : "#EDE6D2",
-                  color: o.theTra ? "#fff" : T.inkSoft,
-                  border: `1px solid ${o.theTra ? T.green : "#C9BFA5"}`,
-                  cursor: canAct(o) ? "pointer" : "default",
-                }}
-              >
-                {o.theTra ? <CheckCircle2 size={11} /> : <Circle size={11} />} Trả thẻ
-              </button>
+              <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
               <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span>
             </div>
             <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
