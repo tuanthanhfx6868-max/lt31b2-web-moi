@@ -1613,7 +1613,7 @@ function DutyScheduleTab({ user, perm }) {
     setShowCForm(false);
   };
   const removeCheckpoint = async (id) => checkpoint.setItems(checkpoint.items.filter((i) => i.id !== id));
-  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => itemCreatedAt(b) - itemCreatedAt(a));
+  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => (b.ngay || "").localeCompare(a.ngay || "") || (itemCreatedAt(b) - itemCreatedAt(a)));
   const [selectedCpId, setSelectedCpId] = useState(null);
   const toggleSelectCp = (id) => setSelectedCpId((s) => (s === id ? null : id));
 
@@ -1773,6 +1773,7 @@ function DutyScheduleTab({ user, perm }) {
           <table className="w-full text-xs f-body">
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                <th className="text-left px-2.5 py-1.5 w-8">STT</th>
                 <th className="text-left px-2.5 py-1.5">Ngày</th><th className="text-left px-2.5 py-1.5">Chốt</th>
                 <th className="text-left px-2.5 py-1.5">Tiểu đội</th><th className="text-left px-2.5 py-1.5">Ca trực</th>
                 <th className="text-left px-2.5 py-1.5">Ghi chú</th><th className="px-2.5 py-1.5"></th>
@@ -1782,6 +1783,7 @@ function DutyScheduleTab({ user, perm }) {
               {sortedCheckpoints.map((c, i) => (
                 editingCpId === c.id ? (
                   <tr key={c.id} style={{ background: T.paper }}>
+                    <td className="px-2.5 py-1.5 f-mono">{i + 1}</td>
                     <td colSpan={6} className="px-3 py-3">
                       <FormWarning message={editCpWarn} />
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1812,6 +1814,7 @@ function DutyScheduleTab({ user, perm }) {
                   </tr>
                 ) : (
                   <tr key={c.id} onClick={() => toggleSelectCp(c.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedCpId === c.id)}>
+                    <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: T.amberDark }}>{i + 1}</td>
                     <td className="px-2.5 py-1.5 f-mono">{new Date(c.ngay).toLocaleDateString("vi-VN")}</td>
                     <td className="px-2.5 py-1.5 font-medium">
                       <span className="inline-flex items-center gap-1.5">
