@@ -1591,6 +1591,9 @@ function OutingTab({ user, perm }) {
   const setDuyet = async (id, duyet) => {
     await setItems(items.map((i) => (i.id === id ? { ...i, duyet, duyetBoi: user } : i)));
   };
+  const toggleThe = async (id, field) => {
+    await setItems(items.map((i) => (i.id === id ? { ...i, [field]: !i[field] } : i)));
+  };
 
   const saveApprovalPhoto = async (url) => {
     await approvalPhoto.save({ url, uploadedBy: user, uploadedAt: new Date().toISOString() });
@@ -1658,7 +1661,38 @@ function OutingTab({ user, perm }) {
         <div className="flex items-start gap-3">
           <div className="f-mono text-xs font-semibold shrink-0 w-8 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
           <div>
-            <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{o.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span></div>
+            <div className="f-body text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: T.ink }}>
+              {o.name}
+              <button
+                onClick={() => canAct(o) && toggleThe(o.id, "theNhan")}
+                disabled={!canAct(o)}
+                title={o.theNhan ? "Đã nhận thẻ ra vào cổng — bấm để bỏ tick" : "Chưa nhận thẻ — bấm để đánh dấu đã nhận thẻ"}
+                className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 btn-press"
+                style={{
+                  background: o.theNhan ? T.green : "#EDE6D2",
+                  color: o.theNhan ? "#fff" : T.inkSoft,
+                  border: `1px solid ${o.theNhan ? T.green : "#C9BFA5"}`,
+                  cursor: canAct(o) ? "pointer" : "default",
+                }}
+              >
+                {o.theNhan ? <CheckCircle2 size={11} /> : <Circle size={11} />} Nhận thẻ
+              </button>
+              <button
+                onClick={() => canAct(o) && toggleThe(o.id, "theTra")}
+                disabled={!canAct(o)}
+                title={o.theTra ? "Đã trả thẻ ra vào cổng — bấm để bỏ tick" : "Chưa trả thẻ — bấm để đánh dấu đã trả thẻ"}
+                className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 btn-press"
+                style={{
+                  background: o.theTra ? T.green : "#EDE6D2",
+                  color: o.theTra ? "#fff" : T.inkSoft,
+                  border: `1px solid ${o.theTra ? T.green : "#C9BFA5"}`,
+                  cursor: canAct(o) ? "pointer" : "default",
+                }}
+              >
+                {o.theTra ? <CheckCircle2 size={11} /> : <Circle size={11} />} Trả thẻ
+              </button>
+              <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span>
+            </div>
             <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
             <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
               {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
