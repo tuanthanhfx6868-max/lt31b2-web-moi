@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -300,6 +300,45 @@ function useAuthConfig() {
   return { config, setConfig: update, loading };
 }
 
+/* ============ CẤU HÌNH DÙNG CHUNG (1 tài liệu duy nhất — dùng cho khoá đăng ký, thủ quỹ...) ============ */
+function useSingleDoc(key, defaultValue) {
+  const [value, setValueState] = useState(defaultValue);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const ref = doc(db, "lt31b2", key);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data().value) {
+          try {
+            setValueState({ ...defaultValue, ...JSON.parse(snap.data().value) });
+          } catch (e) {
+            // giữ mặc định nếu dữ liệu lỗi
+          }
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const update = async (next) => {
+    setValueState(next);
+    try {
+      await setDoc(doc(db, "lt31b2", key), { value: JSON.stringify(next) });
+      return true;
+    } catch (e) {
+      reportGlobalError(`Lưu "${key}" thất bại — ${e?.code || ""} ${e?.message || e}`);
+      return false;
+    }
+  };
+
+  return { value, setValue: update, loading };
+}
+
 /* ============ THÔNG BÁO SỐ MỚI TRÊN THANH ĐIỀU HƯỚNG (giống Zalo) ============
    Mỗi người dùng có một "trạng thái đã xem" riêng (lưu theo tên đăng nhập, tách biệt với người khác)
    ghi lại thời điểm gần nhất họ mở từng mục. Số thông báo = số mục có trong danh sách được TẠO SAU
@@ -432,26 +471,35 @@ function useOutingApprovalPhoto(date) {
 function useRole(user, isAdminLogin) {
   const { items: permissions, setItems: setPermissions, loading: permLoading } = useSharedList("permissions");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
+  const { value: fundConfig, loading: fundConfigLoading } = useSingleDoc("fundConfig", {
+    treasurerName: "", bankAccount: "", bankName: "", qrUrl: "",
+  });
 
   const explicit = permissions.find((p) => normalizeName(p.name) === normalizeName(user));
   const rosterMatch = rosterItems.find((m) => normalizeName(m.name) === normalizeName(user));
   const isCommandRole = isCommandRoleForName(user, rosterItems);
+  const isTreasurer = Boolean(fundConfig.treasurerName && normalizeName(fundConfig.treasurerName) === normalizeName(user));
 
   let role = "thanh_vien";
   if (isAdminLogin) role = "admin";
   else if (explicit) role = explicit.role;
   else if (isCommandRole) role = "can_bo";
 
+  const canManage = role === "admin" || role === "can_bo";
+
   const perm = {
     name: user,
     role,
     isAdmin: role === "admin",
-    canManage: role === "admin" || role === "can_bo",
+    canManage,
+    // Thủ quỹ chỉ có quyền quản lý riêng mục Quỹ trung đội, không có quyền ở các mục khác
+    isTreasurer,
+    canManageFund: canManage || isTreasurer,
     isCommandRole,
     title: rosterMatch?.role || null,
     isOwner: (ownerName) => normalizeName(ownerName) === normalizeName(user),
   };
-  return { perm, permissions, setPermissions, permLoading: permLoading || rosterLoading };
+  return { perm, permissions, setPermissions, permLoading: permLoading || rosterLoading || fundConfigLoading };
 }
 
 /* ============ SMALL UI HELPERS ============ */
@@ -2306,9 +2354,16 @@ function ScoresTab({ perm }) {
 /* ============ TAB: QUỸ TRUNG ĐỘI ============ */
 function FundTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("fund");
+  const { value: fundConfig, setValue: setFundConfig, loading: cfgLoading } = useSingleDoc("fundConfig", {
+    treasurerName: "", bankAccount: "", bankName: "", qrUrl: "",
+  });
   const [form, setForm] = useState({ type: "Thu", amount: "", desc: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
+
+  const [cfgForm, setCfgForm] = useState(fundConfig);
+  const [showCfgForm, setShowCfgForm] = useState(false);
+  useEffect(() => { setCfgForm(fundConfig); }, [fundConfig.treasurerName, fundConfig.bankAccount, fundConfig.bankName, fundConfig.qrUrl]);
 
   const add = async () => {
     if (!form.amount || !form.desc.trim()) { setWarn("Vui lòng nhập đủ Số tiền và Nội dung trước khi lưu."); return; }
@@ -2318,6 +2373,10 @@ function FundTab({ user, perm }) {
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
+  const saveCfg = async () => {
+    await setFundConfig(cfgForm);
+    setShowCfgForm(false);
+  };
 
   const total = items.reduce((sum, f) => sum + (f.type === "Thu" ? 1 : -1) * Number(f.amount || 0), 0);
   const fmt = (n) => n.toLocaleString("vi-VN") + " đ";
@@ -2325,14 +2384,74 @@ function FundTab({ user, perm }) {
   return (
     <div>
       <SectionHeader icon={Wallet} eyebrow="Tài chính" title="Quỹ trung đội"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Ghi thu/chi</Btn>} />
+        action={perm.canManageFund && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Ghi thu/chi</Btn>} />
 
       <div className="stamp-border p-4 mb-5 flex items-center justify-between" style={{ background: "#fff" }}>
         <span className="f-body text-sm" style={{ color: T.inkSoft }}>Số dư hiện tại</span>
         <span className="f-display text-2xl font-semibold" style={{ color: total >= 0 ? T.green : T.red }}>{fmt(total)}</span>
       </div>
 
-      {perm.canManage && showForm && (
+      {/* ---- Thông tin thủ quỹ ---- */}
+      <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <span className="f-display text-sm uppercase tracking-wider" style={{ color: T.amberDark }}>Thủ quỹ trung đội</span>
+          {perm.canManage && (
+            <Btn variant="outline" onClick={() => setShowCfgForm((s) => !s)}>
+              <Users size={14} /> {fundConfig.treasurerName ? "Đổi thủ quỹ" : "Chỉ định thủ quỹ"}
+            </Btn>
+          )}
+        </div>
+
+        {perm.canManage && showCfgForm && (
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+            <div className="md:col-span-2">
+              <Field label="Họ và tên thủ quỹ (chỉ huy điền — đúng tên đăng nhập của người đó)">
+                <input className={inputCls} style={inputStyle} value={cfgForm.treasurerName} onChange={(e) => setCfgForm({ ...cfgForm, treasurerName: e.target.value })} placeholder="VD: Nguyễn Văn A" />
+              </Field>
+            </div>
+            <Field label="Số tài khoản ngân hàng">
+              <input className={inputCls} style={inputStyle} value={cfgForm.bankAccount} onChange={(e) => setCfgForm({ ...cfgForm, bankAccount: e.target.value })} placeholder="VD: 0123456789" />
+            </Field>
+            <Field label="Tên ngân hàng">
+              <input className={inputCls} style={inputStyle} value={cfgForm.bankName} onChange={(e) => setCfgForm({ ...cfgForm, bankName: e.target.value })} placeholder="VD: Vietcombank" />
+            </Field>
+            <div className="md:col-span-2">
+              <Field label="Ảnh mã QR tài khoản ngân hàng">
+                <input className={inputCls} style={inputStyle} value={cfgForm.qrUrl} onChange={(e) => setCfgForm({ ...cfgForm, qrUrl: e.target.value })} placeholder="https://…" />
+                <UploadField onUploaded={(url) => setCfgForm((f) => ({ ...f, qrUrl: url }))} />
+              </Field>
+            </div>
+            <div className="md:col-span-2"><Btn onClick={saveCfg}>Lưu thông tin thủ quỹ</Btn></div>
+          </div>
+        )}
+
+        {!cfgLoading && !showCfgForm && (
+          fundConfig.treasurerName ? (
+            <div className="flex flex-col sm:flex-row items-start gap-4 mt-2">
+              <div className="flex-1">
+                <div className="f-body text-sm" style={{ color: T.ink }}>
+                  Phụ trách: <b>{fundConfig.treasurerName}</b>
+                  {perm.name && normalizeName(perm.name) === normalizeName(fundConfig.treasurerName) && (
+                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5 ml-2" style={{ background: T.amber, color: T.greenDark }}>Đây là bạn</span>
+                  )}
+                </div>
+                {fundConfig.bankAccount && (
+                  <div className="f-mono text-xs mt-1" style={{ color: T.inkSoft }}>
+                    STK: {fundConfig.bankAccount}{fundConfig.bankName ? ` · ${fundConfig.bankName}` : ""}
+                  </div>
+                )}
+              </div>
+              {fundConfig.qrUrl && (
+                <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-32 h-32 object-contain stamp-border" style={{ background: "#fff" }} />
+              )}
+            </div>
+          ) : (
+            <div className="f-body text-xs italic mt-2" style={{ color: T.inkSoft }}>Chưa chỉ định thủ quỹ.</div>
+          )
+        )}
+      </div>
+
+      {perm.canManageFund && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-3"><FormWarning message={warn} /></div>
           <Field label="Loại">
@@ -2356,7 +2475,7 @@ function FundTab({ user, perm }) {
               </div>
               <div className="flex items-center gap-3">
                 <span className="f-mono font-semibold" style={{ color: f.type === "Thu" ? T.green : T.red }}>{f.type === "Thu" ? "+" : "−"}{fmt(Number(f.amount))}</span>
-                {perm.canManage && <button onClick={() => remove(f.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+                {perm.canManageFund && <button onClick={() => remove(f.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
               </div>
             </div>
           ))}
@@ -2635,8 +2754,8 @@ function BoardTab({ user, perm }) {
 /* ============ TAB: PHÂN QUYỀN (chỉ quản trị) ============ */
 const ALL_DATA_KEYS = [
   "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest",
-  "outings", "attendance", "docs", "scores",
-  "fund", "posts", "polls", "roster", "permissions", "authConfig",
+  "outings", "outingLock", "attendance", "docs", "scores",
+  "fund", "fundConfig", "posts", "polls", "roster", "permissions", "authConfig",
 ];
 
 function BackupSection() {
