@@ -1557,7 +1557,7 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
       )}
 
       {canAct && st === "da_nhan" && (
-        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[9.5px] underline btn-press" style={{ color: T.green }}>
+        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[11.5px] font-bold underline btn-press" style={{ color: T.green }}>
           Báo đã trả thẻ
         </button>
       )}
