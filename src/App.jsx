@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useId } from "react";
+import React, { useState, useEffect, useCallback, useId, useRef } from "react";
 import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
@@ -1331,23 +1331,67 @@ function DutyScheduleTab({ user, perm }) {
   );
 }
 
-/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian nghỉ, danh sách theo tiểu đội) ============ */
+/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian nghỉ, danh sách theo tiểu đội) ============
+   - Mỗi đợt có khoảng thời gian nghỉ riêng (từ ngày/giờ → đến ngày/giờ).
+   - Khi ngày hiện tại đã qua khỏi "Ngày kết thúc nghỉ" của đợt đang xem, hệ thống tự động chuyển
+     sang đợt hiện hành/kế tiếp (giống cơ chế "qua 0h ngày mới" của tab Đăng ký ra ngoài).
+   - Các đợt trước đó KHÔNG bị xoá — vẫn chọn lại được trong ô "Xem đợt nghỉ" để quản lý học viên
+     (giống hệt cách "Xem theo ngày" ở tab Đăng ký ra ngoài).
+*/
 function WeekendRestAppendix({ user, perm }) {
   const { items, setItems, loading } = useSharedList("weekendRest");
   const [form, setForm] = useState({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Đợt "hiện hành" theo ngày hôm nay: đang trong khoảng → nếu không có thì đợt gần nhất sắp tới →
+  // nếu cũng không có thì đợt gần nhất vừa kết thúc → cuối cùng là đợt đầu tiên nếu chỉ có 1 đợt.
+  const computeCurrentId = (list) => {
+    if (list.length === 0) return null;
+    const active = list.find((e) => e.fromDate && e.toDate && e.fromDate <= todayStr && todayStr <= e.toDate);
+    if (active) return active.id;
+    const upcoming = [...list].filter((e) => e.fromDate > todayStr).sort((a, b) => a.fromDate.localeCompare(b.fromDate))[0];
+    if (upcoming) return upcoming.id;
+    const past = [...list].filter((e) => e.toDate < todayStr).sort((a, b) => b.toDate.localeCompare(a.toDate))[0];
+    return past ? past.id : list[0].id;
+  };
+
+  const currentId = computeCurrentId(items);
+  const [viewEntryId, setViewEntryId] = useState(currentId);
+  const prevCurrentRef = useRef(currentId);
+
+  useEffect(() => {
+    // Đang xem đúng đợt mặc định cũ và đợt mặc định vừa đổi (qua ngày mới / vừa tạo đợt mới) → tự chuyển theo
+    if (viewEntryId === prevCurrentRef.current && currentId !== prevCurrentRef.current) {
+      setViewEntryId(currentId);
+    }
+    // Đợt đang xem đã bị xoá → quay về đợt hiện hành
+    if (viewEntryId && !items.find((e) => e.id === viewEntryId)) {
+      setViewEntryId(currentId);
+    }
+    prevCurrentRef.current = currentId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, items]);
+
   const create = async () => {
     if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu nghỉ và Ngày kết thúc nghỉ trước khi lưu."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), ...form, by: user, members: [] }, ...items]);
+    const newEntry = { id: Date.now(), ...form, by: user, members: [], approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" };
+    await setItems([newEntry, ...items]);
     setForm({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
     setShowForm(false);
+    setViewEntryId(newEntry.id);
   };
   const removeEntry = async (id) => setItems(items.filter((e) => e.id !== id));
 
-  const sortedEntries = [...items].sort((a, b) => new Date(b.fromDate) - new Date(a.fromDate));
+  // Danh sách để chọn lại (mới nhất trước)
+  const sortedEntries = [...items].sort((a, b) => (b.fromDate || "").localeCompare(a.fromDate || ""));
+  const viewEntry = items.find((e) => e.id === viewEntryId) || null;
+  const entryLabel = (e) =>
+    `${e.fromTime || "17:00"} ${e.fromDate ? new Date(e.fromDate).toLocaleDateString("vi-VN") : "—"} → ${e.toTime || "21:00"} ${e.toDate ? new Date(e.toDate).toLocaleDateString("vi-VN") : "—"}` +
+    (e.toDate && e.toDate < todayStr ? "  (đã qua)" : e.fromDate && e.fromDate > todayStr ? "  (sắp tới)" : "  (đang diễn ra)");
 
   return (
     <div>
@@ -1380,12 +1424,22 @@ function WeekendRestAppendix({ user, perm }) {
         </div>
       )}
 
-      {loading ? <LoadingRow /> : sortedEntries.length === 0 ? <EmptyState text="Chưa có đợt nghỉ cuối tuần nào." /> : (
-        <div className="space-y-5">
-          {sortedEntries.map((entry) => (
-            <WeekendEntryCard key={entry.id} entry={entry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} />
-          ))}
-        </div>
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đợt nghỉ cuối tuần nào." /> : (
+        <>
+          <div className="mb-4 max-w-md">
+            <Field label="Xem đợt nghỉ (chọn lại đợt trước để xem/quản lý học viên)">
+              <select className={inputCls} style={inputStyle} value={viewEntryId || ""} onChange={(e) => setViewEntryId(Number(e.target.value))}>
+                {sortedEntries.map((e) => (
+                  <option key={e.id} value={e.id}>{entryLabel(e)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {viewEntry && (
+            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} />
+          )}
+        </>
       )}
     </div>
   );
@@ -1395,7 +1449,10 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
   const [mForm, setMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
   const [showMForm, setShowMForm] = useState(false);
   const [mWarn, setMWarn] = useState("");
+  const [approvalUrlInput, setApprovalUrlInput] = useState(entry.approvalUrl || "");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
+
+  useEffect(() => { setApprovalUrlInput(entry.approvalUrl || ""); }, [entry.id, entry.approvalUrl]);
 
   const addMember = async () => {
     if (!mForm.hoTen.trim() || !mForm.namSinh.trim()) {
@@ -1413,9 +1470,40 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).filter((m) => m.id !== mid) } : e));
     await setEntries(next);
   };
+  // Sửa thông tin thành viên khi chỉ huy phát hiện sai sót (họ tên/năm sinh/tiểu đội)
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [editMForm, setEditMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+  const [editMWarn, setEditMWarn] = useState("");
+  const startEditMember = (m) => {
+    setEditingMemberId(m.id);
+    setEditMForm({ hoTen: m.hoTen || "", namSinh: m.namSinh || "", tieuDoi: m.tieuDoi || "1" });
+    setEditMWarn("");
+  };
+  const cancelEditMember = () => { setEditingMemberId(null); setEditMWarn(""); };
+  const saveEditMember = async () => {
+    if (!editMForm.hoTen.trim() || !editMForm.namSinh.trim()) {
+      setEditMWarn("Vui lòng nhập đủ Họ và tên, Năm sinh trước khi lưu.");
+      return;
+    }
+    setEditMWarn("");
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).map((m) => (m.id === editingMemberId ? { ...m, ...editMForm } : m)) } : e));
+    await setEntries(next);
+    setEditingMemberId(null);
+  };
   // Trạng thái thẻ ra vào cổng cho từng người trong danh sách nghỉ cuối tuần (dùng chung logic với tab Ra ngoài)
   const setMemberThe = async (mid, trangThai) => {
     const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).map((m) => (m.id === mid ? { ...m, theTrangThai: trangThai } : m)) } : e));
+    await setEntries(next);
+  };
+  // File ký duyệt của lãnh đạo cho riêng tuần/đợt nghỉ này
+  const saveApproval = async (url) => {
+    setApprovalUrlInput(url);
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: url, approvalUploadedBy: user, approvalUploadedAt: new Date().toISOString() } : e));
+    await setEntries(next);
+  };
+  const clearApproval = async () => {
+    setApprovalUrlInput("");
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" } : e));
     await setEntries(next);
   };
   const canApprove = perm.isAdmin || perm.isCommandRole;
@@ -1451,8 +1539,8 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
       </div>
 
       <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
-        <span className="f-mono text-[11px] uppercase tracking-widest" style={{ color: T.amberDark }}>
-          Danh sách ({sortedMembers.length} người)
+        <span className="f-mono text-[13px] uppercase tracking-widest font-bold" style={{ color: T.amberDark }}>
+          Danh sách trực ({sortedMembers.length} người)
         </span>
         {perm.canManage && (
           <Btn variant="outline" onClick={() => setShowMForm((s) => !s)}><Plus size={14} /> Thêm người</Btn>
@@ -1478,6 +1566,42 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         </div>
       )}
 
+      <div className="mt-4 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+        <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
+          <Paperclip size={13} /> File ký duyệt của lãnh đạo (tuần này)
+        </div>
+        {entry.approvalUrl ? (
+          <div>
+            {isImage(entry.approvalUrl) ? (
+              <a href={entry.approvalUrl} target="_blank" rel="noreferrer">
+                <img src={entry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+              </a>
+            ) : (
+              <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file đã ký duyệt
+              </a>
+            )}
+            <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
+              Tải lên bởi {entry.approvalUploadedBy || "—"} lúc {entry.approvalUploadedAt ? new Date(entry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
+            </div>
+            {perm.canManage && (
+              <button onClick={clearApproval} className="f-mono text-[10.5px] underline mt-1" style={{ color: T.red }}>Xoá file đã ký duyệt</button>
+            )}
+          </div>
+        ) : (
+          <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa có file ký duyệt của lãnh đạo cho tuần này.</div>
+        )}
+        {perm.canManage && (
+          <div className="mt-2">
+            <input className={inputCls} style={inputStyle} value={approvalUrlInput} onChange={(e) => setApprovalUrlInput(e.target.value)} placeholder="https://…" />
+            <div className="flex items-center gap-2 mt-1.5">
+              <UploadField onUploaded={(url) => saveApproval(url)} />
+              <Btn variant="outline" onClick={() => saveApproval(approvalUrlInput)}>Lưu link</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+
       {sortedMembers.length === 0 ? (
         <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
       ) : (
@@ -1486,27 +1610,57 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
             <thead>
               <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-3 py-2 w-14">STT</th>
-                <th className="text-left px-3 py-2">Họ và tên</th>
+                <th className="text-left px-3 py-2 min-w-[160px]">Họ và tên</th>
                 <th className="text-left px-3 py-2">Năm sinh</th>
                 <th className="text-left px-3 py-2">Tiểu đội</th>
-                <th className="text-left px-3 py-2">Thẻ ra vào cổng</th>
+                <th className="text-left px-3 py-2 min-w-[260px]">Thẻ ra vào cổng</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {sortedMembers.map((m, i) => (
-                <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
-                  <td className="px-3 py-2 f-mono">{i + 1}</td>
-                  <td className="px-3 py-2 font-medium">{m.hoTen}</td>
-                  <td className="px-3 py-2 f-mono">{m.namSinh}</td>
-                  <td className="px-3 py-2 f-mono">TĐ{m.tieuDoi}</td>
-                  <td className="px-3 py-2">
-                    <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {perm.canManage && <button onClick={() => removeMember(m.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-                  </td>
-                </tr>
+                editingMemberId === m.id ? (
+                  <tr key={m.id} style={{ background: T.paper }}>
+                    <td className="px-3 py-2 f-mono">{i + 1}</td>
+                    <td colSpan={5} className="px-3 py-3">
+                      <FormWarning message={editMWarn} />
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input className={inputCls} style={inputStyle} value={editMForm.hoTen} onChange={(e) => setEditMForm({ ...editMForm, hoTen: e.target.value })} placeholder="Họ và tên" />
+                        <input className={inputCls} style={inputStyle} value={editMForm.namSinh} onChange={(e) => setEditMForm({ ...editMForm, namSinh: e.target.value })} placeholder="Năm sinh" />
+                        <select className={inputCls} style={inputStyle} value={editMForm.tieuDoi} onChange={(e) => setEditMForm({ ...editMForm, tieuDoi: e.target.value })}>
+                          <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
+                          <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Btn onClick={saveEditMember}>Lưu</Btn>
+                        <Btn variant="outline" onClick={cancelEditMember}>Huỷ</Btn>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                    <td className="px-3 py-2 f-mono">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        {m.hoTen}
+                        {perm.canManage && (
+                          <button onClick={() => startEditMember(m)} title="Sửa thông tin (khi có sai sót)">
+                            <Pencil size={13} style={{ color: T.green }} />
+                          </button>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 f-mono">{m.namSinh}</td>
+                    <td className="px-3 py-2 f-mono">TĐ{m.tieuDoi}</td>
+                    <td className="px-3 py-2">
+                      <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {perm.canManage && <button onClick={() => removeMember(m.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
@@ -2925,7 +3079,7 @@ export default function App() {
         {/* Content — bọc trong khung "tờ giấy" nổi khối */}
         <main className="flex-1 min-w-0 p-4 md:p-8">
           <div
-            className="max-w-4xl mx-auto p-5 md:p-9 card-sheet"
+            className="max-w-6xl mx-auto p-5 md:p-9 card-sheet"
             style={{ background: T.paper, border: `1px solid ${T.paperDark}`, borderTop: `3px solid ${T.gold}` }}
           >
             {renderTab()}
