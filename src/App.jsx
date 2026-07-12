@@ -1587,7 +1587,7 @@ function DutyScheduleTab({ user, perm }) {
     setShowCForm(false);
   };
   const removeCheckpoint = async (id) => checkpoint.setItems(checkpoint.items.filter((i) => i.id !== id));
-  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => new Date(a.ngay) - new Date(b.ngay));
+  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => new Date(b.ngay) - new Date(a.ngay));
 
   return (
     <div>
@@ -1712,10 +1712,10 @@ function DutyScheduleTab({ user, perm }) {
       )}
 
       {checkpoint.loading ? <LoadingRow /> : sortedCheckpoints.length === 0 ? <EmptyState text="Chưa có phân công trực chốt nào." /> : (
-        <div className="overflow-x-auto stamp-border mb-8" style={{ background: "#fff" }}>
+        <div className="overflow-x-auto overflow-y-auto stamp-border mb-8" style={{ background: "#fff", maxHeight: 290 }}>
           <table className="w-full text-sm f-body">
             <thead>
-              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+              <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
                 <th className="text-left px-3 py-2">Ngày</th><th className="text-left px-3 py-2">Chốt</th>
                 <th className="text-left px-3 py-2">Tiểu đội</th><th className="text-left px-3 py-2">Ca trực</th>
                 <th className="text-left px-3 py-2">Ghi chú</th><th className="px-3 py-2"></th>
