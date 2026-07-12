@@ -2181,40 +2181,40 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
   const FG = { chua_nhan: T.inkSoft, da_nhan: "#fff", cho_xac_nhan_tra: T.ink, da_tra: "#fff" };
 
   return (
-    <span className="inline-flex items-center gap-1.5 flex-wrap">
+    <span className="inline-flex items-center gap-1 flex-wrap">
       <span
-        className="f-mono text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1"
+        className="f-mono text-[8.5px] uppercase tracking-wider px-1 py-0.5 rounded-sm inline-flex items-center gap-0.5"
         style={{ background: BG[st], color: FG[st], border: `1px solid ${BG[st]}` }}
       >
-        {st === "da_tra" ? <CheckCircle2 size={11} /> : <Circle size={11} />} {LABEL[st]}
+        {st === "da_tra" ? <CheckCircle2 size={9} /> : <Circle size={9} />} {LABEL[st]}
       </span>
 
       {canAct && st === "chua_nhan" && (
-        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[9.5px] font-bold underline btn-press" style={{ color: T.red }}>
+        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[8.5px] font-bold underline btn-press" style={{ color: T.red }}>
           Đánh dấu đã nhận thẻ
         </button>
       )}
 
       {canAct && st === "da_nhan" && (
-        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[9.5px] font-bold underline btn-press" style={{ color: T.green }}>
+        <button onClick={() => setThe(o.id, "cho_xac_nhan_tra")} className="f-mono text-[8.5px] font-bold underline btn-press" style={{ color: T.green }}>
           Báo đã trả thẻ
         </button>
       )}
 
       {st === "cho_xac_nhan_tra" && canApprove && (
         <>
-          <button onClick={() => setThe(o.id, "da_tra")} title="Xác nhận đã trả thẻ ra vào cổng"><CheckCircle2 size={14} style={{ color: T.green }} /></button>
-          <button onClick={() => setThe(o.id, "da_nhan")} title="Chưa trả — vẫn đang giữ thẻ"><X size={14} style={{ color: T.red }} /></button>
+          <button onClick={() => setThe(o.id, "da_tra")} title="Xác nhận đã trả thẻ ra vào cổng"><CheckCircle2 size={12} style={{ color: T.green }} /></button>
+          <button onClick={() => setThe(o.id, "da_nhan")} title="Chưa trả — vẫn đang giữ thẻ"><X size={12} style={{ color: T.red }} /></button>
         </>
       )}
       {st === "cho_xac_nhan_tra" && !canApprove && canAct && (
-        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[9.5px] underline btn-press" style={{ color: T.inkSoft }}>
+        <button onClick={() => setThe(o.id, "da_nhan")} className="f-mono text-[8.5px] underline btn-press" style={{ color: T.inkSoft }}>
           Huỷ báo (chưa trả)
         </button>
       )}
 
       {st === "da_tra" && canApprove && (
-        <button onClick={() => setThe(o.id, "da_nhan")} title="Sửa lại nếu tick nhầm" className="f-mono text-[9.5px] underline btn-press" style={{ color: T.inkSoft }}>
+        <button onClick={() => setThe(o.id, "da_nhan")} title="Sửa lại nếu tick nhầm" className="f-mono text-[8.5px] underline btn-press" style={{ color: T.inkSoft }}>
           Sửa lại
         </button>
       )}
@@ -2357,45 +2357,45 @@ function OutingTab({ user, perm }) {
       );
     }
     return (
-      <div className="flex items-start justify-between gap-3 p-3 flex-wrap" style={{ background: "#fff", borderLeft: `4px solid ${duyetColor[o.duyet || "Chờ duyệt"]}` }}>
-        <div className="flex items-start gap-3">
-          <div className="f-mono text-xs font-semibold shrink-0 w-8 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
+      <div className="flex items-start justify-between gap-2 py-1.5 px-2 flex-wrap" style={{ background: "#fff", borderLeft: `3px solid ${duyetColor[o.duyet || "Chờ duyệt"]}` }}>
+        <div className="flex items-start gap-2">
+          <div className="f-mono text-[10.5px] font-semibold shrink-0 w-6 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
           <div>
-            <div className="f-body text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: T.ink }}>
+            <div className="f-body text-xs font-medium flex items-center gap-1 flex-wrap leading-tight" style={{ color: T.ink }}>
               {o.name}
-              <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span>
+              <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span>
             </div>
-            <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
-            <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
+            <div className="f-body text-[10.5px] leading-tight" style={{ color: T.inkSoft }}>{o.lyDo}</div>
+            <div className="f-mono text-[10px] leading-tight" style={{ color: T.inkSoft }}>
               {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
               {o.trangThai === "Đã về" && <> · Đã về lúc {o.gioVeThucTe}</>}
             </div>
-            <div className="f-mono text-[10px] mt-0.5 italic" style={{ color: T.inkSoft }}>
+            <div className="f-mono text-[9px] italic leading-tight" style={{ color: T.inkSoft }}>
               Đăng ký lúc {new Date(o.createdAt || o.id).toLocaleString("vi-VN")} · bởi {o.dangKyBoi || "—"}
               {o.duyetBoi && o.duyet !== "Chờ duyệt" && <> · {o.duyet === "Đã duyệt" ? "duyệt" : "từ chối"} bởi {o.duyetBoi}</>}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
           <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
-          <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: duyetColor[o.duyet || "Chờ duyệt"], color: "#fff" }}>{o.duyet || "Chờ duyệt"}</span>
+          <span className="f-display text-[9px] uppercase tracking-wider px-1.5 py-0.5" style={{ background: duyetColor[o.duyet || "Chờ duyệt"], color: "#fff" }}>{o.duyet || "Chờ duyệt"}</span>
           {o.duyet === "Đã duyệt" && (
-            <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: o.trangThai === "Đã về" ? T.green : "#8A8F76", color: "#fff" }}>{o.trangThai}</span>
+            <span className="f-display text-[9px] uppercase tracking-wider px-1.5 py-0.5" style={{ background: o.trangThai === "Đã về" ? T.green : "#8A8F76", color: "#fff" }}>{o.trangThai}</span>
           )}
           {canApprove && (o.duyet || "Chờ duyệt") === "Chờ duyệt" && (
             <>
-              <button onClick={() => setDuyet(o.id, "Đã duyệt")} title="Duyệt cho ra ngoài"><CheckCircle2 size={18} style={{ color: T.green }} /></button>
-              <button onClick={() => setDuyet(o.id, "Từ chối")} title="Từ chối"><X size={18} style={{ color: T.red }} /></button>
+              <button onClick={() => setDuyet(o.id, "Đã duyệt")} title="Duyệt cho ra ngoài"><CheckCircle2 size={15} style={{ color: T.green }} /></button>
+              <button onClick={() => setDuyet(o.id, "Từ chối")} title="Từ chối"><X size={15} style={{ color: T.red }} /></button>
             </>
           )}
           {canApprove && o.duyet === "Từ chối" && (
-            <button onClick={() => setDuyet(o.id, "Chờ duyệt")} title="Đưa lại vào hàng chờ duyệt"><Circle size={16} style={{ color: T.amberDark }} /></button>
+            <button onClick={() => setDuyet(o.id, "Chờ duyệt")} title="Đưa lại vào hàng chờ duyệt"><Circle size={13} style={{ color: T.amberDark }} /></button>
           )}
           {o.duyet === "Đã duyệt" && o.trangThai !== "Đã về" && canAct(o) && (
-            <button onClick={() => markBack(o.id)} title="Xác nhận đã về"><CheckCircle2 size={18} style={{ color: T.green }} /></button>
+            <button onClick={() => markBack(o.id)} title="Xác nhận đã về"><CheckCircle2 size={15} style={{ color: T.green }} /></button>
           )}
-          {canApprove && <button onClick={() => startEdit(o)} title="Sửa / đổi tên người ra ngoài"><Pencil size={14} style={{ color: T.green }} /></button>}
-          {canAct(o) && <button onClick={() => remove(o.id)} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>}
+          {canApprove && <button onClick={() => startEdit(o)} title="Sửa / đổi tên người ra ngoài"><Pencil size={12} style={{ color: T.green }} /></button>}
+          {canAct(o) && <button onClick={() => remove(o.id)} title="Xoá"><Trash2 size={12} style={{ color: T.red }} /></button>}
         </div>
       </div>
     );
@@ -2406,7 +2406,7 @@ function OutingTab({ user, perm }) {
       <SectionHeader icon={DoorOpen} eyebrow={`${new Date(viewDate).toLocaleDateString("vi-VN")}: ${approved.length} đã chốt · ${pending.length} chờ duyệt · ${chuaVe} chưa về`} title="Đăng ký ra ngoài"
         action={<Btn onClick={openForm} disabled={isLocked && !canApprove}><Plus size={16} /> {canApprove ? "Thêm người ra ngoài" : "Đăng ký"}</Btn>} />
 
-      <div className="flex flex-wrap items-end gap-3 mb-5">
+      <div className="flex flex-wrap items-end gap-2 mb-3">
         <Field label="Xem theo ngày">
           <input type="date" className={inputCls} style={inputStyle} value={viewDate} onChange={(e) => setViewDate(e.target.value)} />
         </Field>
@@ -2414,28 +2414,28 @@ function OutingTab({ user, perm }) {
       </div>
 
       {isLocked && (
-        <div className="f-body text-xs mb-5 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ background: T.red, color: "#fff" }}>
-          <DoorOpen size={14} /> <b className="f-display uppercase text-[10.5px] tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
-          {canApprove && <span className="italic text-[11px]"> Riêng bạn (Quản trị/Trung đội trưởng/phó) vẫn thêm người ra ngoài được bình thường.</span>}
+        <div className="f-body text-[11px] mb-3 px-2.5 py-1.5 flex items-center gap-1.5 flex-wrap" style={{ background: T.red, color: "#fff" }}>
+          <DoorOpen size={12} /> <b className="f-display uppercase text-[9.5px] tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
+          {canApprove && <span className="italic text-[10px]"> Riêng bạn (Quản trị/Trung đội trưởng/phó) vẫn thêm người ra ngoài được bình thường.</span>}
         </div>
       )}
 
       {perm.canManage && (
-        <div className="stamp-border p-3 mb-5" style={{ background: "#FBF3DD" }}>
-          <div className="f-display text-[10px] uppercase tracking-widest mb-2" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+        <div className="stamp-border p-2.5 mb-3" style={{ background: "#FBF3DD" }}>
+          <div className="f-display text-[9px] uppercase tracking-widest mb-1.5" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
+          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
             <Btn variant={lock.config.manualLock ? "danger" : "outline"} onClick={toggleManualLock}>
               {lock.config.manualLock ? "Đang khoá thủ công — bấm để mở khoá" : "Khoá đăng ký ngay (thủ công)"}
             </Btn>
           </div>
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-end gap-1.5">
             <Field label="Tự động khoá đến thời điểm">
               <input type="datetime-local" className={inputCls} style={inputStyle} value={lockAtInput} onChange={(e) => setLockAtInput(e.target.value)} />
             </Field>
             <Btn onClick={saveScheduledLock}>Lưu giờ khoá</Btn>
             {lock.config.lockAt && <Btn variant="outline" onClick={clearScheduledLock}>Xoá giờ khoá</Btn>}
           </div>
-          <p className="f-body text-[10.5px] leading-snug mt-2" style={{ color: T.inkSoft }}>
+          <p className="f-body text-[9.5px] leading-snug mt-1.5" style={{ color: T.inkSoft }}>
             Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — thành viên không tự đăng ký được nữa, nhưng Quản trị/Trung đội trưởng/phó
             vẫn thêm thẳng người ra ngoài được (dành cho trường hợp phát sinh không kịp đăng ký). Qua 0h ngày mới, mọi người lại đăng ký từ đầu như bình thường.
           </p>
@@ -2443,15 +2443,15 @@ function OutingTab({ user, perm }) {
       )}
 
       {showForm && (!isLocked || canApprove) && (
-        <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
+        <div className="stamp-border p-3 mb-3 grid grid-cols-1 md:grid-cols-2 gap-2" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
           {canApprove && isLocked && (
-            <div className="md:col-span-2 f-body text-xs px-3 py-2" style={{ color: T.red, background: "#F7E3E6", borderLeft: `3px solid ${T.red}` }}>
+            <div className="md:col-span-2 f-body text-[10.5px] px-2.5 py-1.5" style={{ color: T.red, background: "#F7E3E6", borderLeft: `3px solid ${T.red}` }}>
               Đăng ký đang bị khoá đối với thành viên — bạn thêm thẳng người này với vai trò chỉ huy, đăng ký sẽ tự động ở trạng thái "Đã duyệt".
             </div>
           )}
           {canApprove && !isLocked && (
-            <div className="md:col-span-2 f-body text-xs italic" style={{ color: T.inkSoft }}>
+            <div className="md:col-span-2 f-body text-[10.5px] italic" style={{ color: T.inkSoft }}>
               Bạn thêm trực tiếp nên đăng ký này sẽ tự động ở trạng thái "Đã duyệt".
             </div>
           )}
@@ -2474,39 +2474,39 @@ function OutingTab({ user, perm }) {
       {loading ? <LoadingRow /> : dayItems.length === 0 ? (
         <EmptyState text={`Chưa có đăng ký ra ngoài nào cho ngày ${new Date(viewDate).toLocaleDateString("vi-VN")}.`} />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3.5">
           <div>
-            <div className="f-display text-sm uppercase tracking-wider mb-2 flex items-center gap-2" style={{ color: T.green }}>
-              <CheckCircle2 size={15} /> Danh sách chốt được ra ngoài ({approved.length})
+            <div className="f-display text-xs uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: T.green }}>
+              <CheckCircle2 size={13} /> Danh sách chốt được ra ngoài ({approved.length})
             </div>
             {approved.length === 0 ? (
               <EmptyState text="Chưa có ai được duyệt cho ngày này." />
             ) : (
-              <div className="space-y-2">{approved.map((o) => <Row key={o.id} o={o} />)}</div>
+              <div className="divide-y" style={{ borderColor: T.paperDark }}>{approved.map((o) => <Row key={o.id} o={o} />)}</div>
             )}
           </div>
 
           <div>
-            <div className="f-display text-sm uppercase tracking-wider mb-2 flex items-center gap-2" style={{ color: T.amberDark }}>
-              <Paperclip size={15} /> Ảnh danh sách đã ký duyệt (lãnh đạo)
+            <div className="f-display text-xs uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: T.amberDark }}>
+              <Paperclip size={13} /> Ảnh danh sách đã ký duyệt (lãnh đạo)
             </div>
             {approvalPhoto.loading ? <LoadingRow /> : approvalPhoto.data.url ? (
-              <div className="stamp-border p-3" style={{ background: "#fff" }}>
+              <div className="stamp-border p-2.5" style={{ background: "#fff" }}>
                 <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer">
                   <img src={approvalPhoto.data.url} alt="Danh sách ra ngoài đã ký duyệt" className="max-w-full md:max-w-xs" style={{ border: `1px solid ${T.paperDark}` }} />
                 </a>
-                <div className="f-mono text-[10px] mt-2" style={{ color: T.inkSoft }}>
+                <div className="f-mono text-[9px] mt-1.5" style={{ color: T.inkSoft }}>
                   Tải lên bởi {approvalPhoto.data.uploadedBy || "—"} lúc {approvalPhoto.data.uploadedAt ? new Date(approvalPhoto.data.uploadedAt).toLocaleString("vi-VN") : "—"}
                 </div>
                 {canApprove && (
-                  <button onClick={removeApprovalPhoto} className="f-display text-[11px] uppercase tracking-wider mt-2 flex items-center gap-1" style={{ color: T.red }}>
-                    <Trash2 size={12} /> Xoá ảnh, tải lại
+                  <button onClick={removeApprovalPhoto} className="f-display text-[10px] uppercase tracking-wider mt-1.5 flex items-center gap-1" style={{ color: T.red }}>
+                    <Trash2 size={11} /> Xoá ảnh, tải lại
                   </button>
                 )}
               </div>
             ) : canApprove ? (
-              <div className="stamp-border p-3" style={{ background: "#fff" }}>
-                <p className="f-body text-xs mb-1" style={{ color: T.inkSoft }}>
+              <div className="stamp-border p-2.5" style={{ background: "#fff" }}>
+                <p className="f-body text-[10.5px] mb-1 leading-snug" style={{ color: T.inkSoft }}>
                   Chụp/tải ảnh tờ danh sách giấy đã có chữ ký duyệt của lãnh đạo cho ngày {new Date(viewDate).toLocaleDateString("vi-VN")}, để lưu làm bằng chứng đối chiếu.
                 </p>
                 <UploadField onUploaded={saveApprovalPhoto} />
@@ -2518,15 +2518,15 @@ function OutingTab({ user, perm }) {
 
           {pending.length > 0 && (
             <div>
-              <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Chờ duyệt ({pending.length})</div>
-              <div className="space-y-2">{pending.map((o) => <Row key={o.id} o={o} />)}</div>
+              <div className="f-display text-xs uppercase tracking-wider mb-1.5" style={{ color: T.amberDark }}>Chờ duyệt ({pending.length})</div>
+              <div className="divide-y" style={{ borderColor: T.paperDark }}>{pending.map((o) => <Row key={o.id} o={o} />)}</div>
             </div>
           )}
 
           {rejected.length > 0 && (
             <div>
-              <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.red }}>Đã từ chối ({rejected.length})</div>
-              <div className="space-y-2">{rejected.map((o) => <Row key={o.id} o={o} />)}</div>
+              <div className="f-display text-xs uppercase tracking-wider mb-1.5" style={{ color: T.red }}>Đã từ chối ({rejected.length})</div>
+              <div className="divide-y" style={{ borderColor: T.paperDark }}>{rejected.map((o) => <Row key={o.id} o={o} />)}</div>
             </div>
           )}
         </div>
