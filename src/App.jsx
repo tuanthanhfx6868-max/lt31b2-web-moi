@@ -1189,11 +1189,14 @@ function RosterTab({ perm, user }) {
           <table className="w-full f-body" style={{ fontSize: "12.5px", borderCollapse: "collapse" }}>
             <thead>
               <tr className="f-mono text-[9.5px] uppercase tracking-widest" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
-                <th className="text-left px-2.5 py-2 w-8">STT</th>
-                <th className="text-left px-2.5 py-2">Mã số</th><th className="text-left px-2.5 py-2 min-w-[110px]">Họ tên</th>
-                <th className="text-left px-2.5 py-2 min-w-[90px]">Chức vụ</th><th className="text-left px-2.5 py-2 whitespace-nowrap">Tiểu đội</th>
-                <th className="text-left px-2.5 py-2">Năm sinh</th>
-                <th className="text-left px-2.5 py-2">SĐT</th><th className="px-2.5 py-2 w-14"></th>
+                <th className="text-left px-2.5 py-2 w-8" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>STT</th>
+                <th className="text-left px-2.5 py-2" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>Mã số</th>
+                <th className="text-left px-2.5 py-2 min-w-[110px]" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>Họ tên</th>
+                <th className="text-left px-2.5 py-2 min-w-[90px]" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>Chức vụ</th>
+                <th className="text-left px-2.5 py-2 whitespace-nowrap" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>Tiểu đội</th>
+                <th className="text-left px-2.5 py-2" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>Năm sinh</th>
+                <th className="text-left px-2.5 py-2" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>SĐT</th>
+                <th className="px-2.5 py-2 w-14"></th>
               </tr>
             </thead>
             <tbody>
@@ -1202,13 +1205,13 @@ function RosterTab({ perm, user }) {
                   key={m.id}
                   style={{ background: i % 2 ? T.paper : "#fff", borderBottom: `1px solid ${T.paperDark}` }}
                 >
-                  <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft }}>{m.stt || "—"}</td>
-                  <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft }}>{m.msv || "—"}</td>
-                  <td className="px-2.5 py-2 font-medium text-[11px] leading-tight">{m.name}</td>
-                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft }}>{m.role}</td>
-                  <td className="px-2.5 py-2 f-mono whitespace-nowrap">{m.tieuDoi ? `Tiểu đội ${m.tieuDoi}` : "—"}</td>
-                  <td className="px-2.5 py-2 f-mono">{formatDob(m.dob)}</td>
-                  <td className="px-2.5 py-2 f-mono">{m.phone || "—"}</td>
+                  <td className="px-2.5 py-2 f-mono font-bold" style={{ color: T.ink, borderRight: `1px solid ${T.paperDark}` }}>{m.stt || "—"}</td>
+                  <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.msv || "—"}</td>
+                  <td className="px-2.5 py-2 font-bold text-[11px] leading-tight" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.name}</td>
+                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.role}</td>
+                  <td className="px-2.5 py-2 f-mono whitespace-nowrap" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.tieuDoi ? `Tiểu đội ${m.tieuDoi}` : "—"}</td>
+                  <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{formatDob(m.dob)}</td>
+                  <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.phone || "—"}</td>
                   <td className="px-2.5 py-2">
                     <div className="flex items-center justify-end gap-2">
                       {canEditRow(m) && (
