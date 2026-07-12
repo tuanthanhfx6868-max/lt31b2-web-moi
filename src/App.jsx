@@ -79,6 +79,7 @@ const FONT_STYLE = `
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; border-radius: 999px; flex-shrink: 0;
 }
+.icon-badge-sm { width: 21px; height: 21px; }
 :focus-visible { outline: 2px solid ${T.amber}; outline-offset: 2px; }
 .drawer-backdrop { transition: opacity 0.25s ease; }
 @media (prefers-reduced-motion: reduce) {
@@ -695,7 +696,7 @@ function AnnouncementsTab({ user, perm }) {
 
   const today = new Date().toISOString().slice(0, 10);
   const todaySchedule = schedule.items.filter((s) => s.date === today);
-  const chuaVe = outings.items.filter((o) => o.ngay === today && o.trangThai === "Chưa về");
+  const chuaVe = outings.items.filter((o) => o.ngay === today && o.duyet === "Đã duyệt" && o.trangThai === "Chưa về");
 
   const add = async () => {
     if (!form.title.trim()) { setWarn("Vui lòng nhập Tiêu đề trước khi lưu."); return; }
@@ -1474,16 +1475,33 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
        + Khoá tự động: đặt một thời điểm, quá giờ đó hệ thống tự khoá, không cho tạo đăng ký mới nữa.
      Khi bị khoá, ai cũng thấy thông báo "Đã hết thời gian đăng ký" và không thể mở form đăng ký.
 */
+/* ============ TAB: ĐĂNG KÝ RA NGOÀI ============
+   Quy trình:
+   1) Thành viên tự đăng ký → vào hàng "Chờ duyệt".
+   2) Quản trị / Trung đội trưởng / Trung đội phó (canApprove) duyệt hoặc từ chối từng đăng ký.
+      Họ cũng có thể tự thêm thẳng một người được ra ngoài (tự động ở trạng thái "Đã duyệt"),
+      và sửa/đổi tên người đi (dùng khi đổi ý hoặc 2 thành viên đổi suất cho nhau) mà không cần xoá đăng ký cũ.
+   3) "Danh sách chốt" = tất cả đăng ký đã Duyệt trong ngày — đây là danh sách chính thức ai được ra ngoài hôm đó.
+   4) Qua 0h ngày mới, "today" tự đổi sang ngày kế tiếp nên mọi người lại đăng ký từ đầu; các ngày cũ chỉ cần
+      chọn ngày ở ô "Xem theo ngày" là xem lại được danh sách chốt/đã duyệt/chờ duyệt của ngày đó.
+*/
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
   const lock = useOutingLock();
   const today = new Date().toISOString().slice(0, 10);
+  const [viewDate, setViewDate] = useState(today);
   const [form, setForm] = useState({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editErr, setEditErr] = useState("");
   const [lockAtInput, setLockAtInput] = useState(lock.config.lockAt || "");
 
   useEffect(() => { setLockAtInput(lock.config.lockAt || ""); }, [lock.config.lockAt]);
+
+  // Chỉ Quản trị / Trung đội trưởng / Trung đội phó được phê duyệt, thêm thẳng hoặc đổi tên người ra ngoài
+  const canApprove = perm.isAdmin || perm.isCommandRole;
 
   const nowTs = new Date();
   const scheduledLocked = Boolean(lock.config.lockAt) && nowTs >= new Date(lock.config.lockAt);
@@ -1498,20 +1516,51 @@ function OutingTab({ user, perm }) {
   const saveScheduledLock = async () => { await lock.setConfig({ ...lock.config, lockAt: lockAtInput }); };
   const clearScheduledLock = async () => { setLockAtInput(""); await lock.setConfig({ ...lock.config, lockAt: "" }); };
 
+  const openForm = () => {
+    setForm({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: viewDate || today, gioDi: "", gioVeDuKien: "" });
+    setWarn("");
+    setShowForm(true);
+  };
+
   const add = async () => {
     if (isLocked) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới."); return; }
     if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), ...form, dangKyBoi: user, trangThai: "Chưa về", gioVeThucTe: "", createdAt: new Date().toISOString() }, ...items]);
-    setForm({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
+    // Quản trị / TĐT / TĐP tự thêm người thì coi như đã duyệt luôn; thành viên tự đăng ký thì vào hàng chờ duyệt.
+    await setItems([
+      {
+        id: Date.now(), ...form, dangKyBoi: user, trangThai: "Chưa về", gioVeThucTe: "",
+        createdAt: new Date().toISOString(),
+        duyet: canApprove ? "Đã duyệt" : "Chờ duyệt",
+        duyetBoi: canApprove ? user : "",
+      },
+      ...items,
+    ]);
     setShowForm(false);
   };
+
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const markBack = async (id) => {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
     await setItems(items.map((i) => (i.id === id ? { ...i, trangThai: "Đã về", gioVeThucTe: `${hh}:${mm}` } : i)));
+  };
+  const setDuyet = async (id, duyet) => {
+    await setItems(items.map((i) => (i.id === id ? { ...i, duyet, duyetBoi: user } : i)));
+  };
+
+  const startEdit = (o) => {
+    setEditingId(o.id);
+    setEditForm({ name: o.name || "", namSinh: o.namSinh || "", tieuDoi: o.tieuDoi || "1", lyDo: o.lyDo || "", ngay: o.ngay || today, gioDi: o.gioDi || "", gioVeDuKien: o.gioVeDuKien || "" });
+    setEditErr("");
+  };
+  const cancelEdit = () => { setEditingId(null); setEditForm(null); setEditErr(""); };
+  const saveEdit = async () => {
+    if (!editForm.name.trim() || !editForm.lyDo.trim()) { setEditErr("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài (mục có dấu *) trước khi lưu."); return; }
+    setEditErr("");
+    await setItems(items.map((i) => (i.id === editingId ? { ...i, ...editForm } : i)));
+    cancelEdit();
   };
 
   // STT tính theo thứ tự thời gian đăng ký (createdAt), riêng cho từng ngày, để biết ai đăng ký trước/sau
@@ -1525,41 +1574,88 @@ function OutingTab({ user, perm }) {
     });
   }
 
-  const todays = items.filter((i) => i.ngay === today).sort((a, b) => createdTime(a) - createdTime(b));
-  const others = items.filter((i) => i.ngay !== today).sort((a, b) => createdTime(a) - createdTime(b));
-  const chuaVe = todays.filter((i) => i.trangThai === "Chưa về").length;
+  const dayItems = items.filter((i) => i.ngay === viewDate).sort((a, b) => createdTime(a) - createdTime(b));
+  const pending = dayItems.filter((o) => (o.duyet || "Chờ duyệt") === "Chờ duyệt");
+  const approved = dayItems.filter((o) => o.duyet === "Đã duyệt");
+  const rejected = dayItems.filter((o) => o.duyet === "Từ chối");
+  const chuaVe = approved.filter((i) => i.trangThai === "Chưa về").length;
   const canAct = (o) => perm.canManage || perm.isOwner(o.dangKyBoi);
 
-  const Row = ({ o }) => (
-    <div className="flex items-start justify-between gap-3 p-3" style={{ background: "#fff", borderLeft: `4px solid ${o.trangThai === "Đã về" ? T.green : T.red}` }}>
-      <div className="flex items-start gap-3">
-        <div className="f-mono text-xs font-semibold shrink-0 w-8 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
-        <div>
-          <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{o.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span></div>
-          <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
-          <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
-            {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
-            {o.trangThai === "Đã về" && <> · Đã về lúc {o.gioVeThucTe}</>}
-          </div>
-          <div className="f-mono text-[10px] mt-0.5 italic" style={{ color: T.inkSoft }}>
-            Đăng ký lúc {new Date(o.createdAt || o.id).toLocaleString("vi-VN")}
+  const duyetColor = { "Chờ duyệt": T.amberDark, "Đã duyệt": T.green, "Từ chối": T.red };
+
+  const Row = ({ o }) => {
+    if (editingId === o.id && editForm) {
+      return (
+        <div className="stamp-border p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5" style={{ background: "#FBF3DD" }}>
+          <div className="md:col-span-2"><FormWarning message={editErr} /></div>
+          <Field label="Họ và tên (đổi tên/đổi người ra)" required><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
+          <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={editForm.namSinh} onChange={(e) => setEditForm({ ...editForm, namSinh: e.target.value })} /></Field>
+          <Field label="Tiểu đội">
+            <select className={inputCls} style={inputStyle} value={editForm.tieuDoi} onChange={(e) => setEditForm({ ...editForm, tieuDoi: e.target.value })}>
+              <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
+              <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
+            </select>
+          </Field>
+          <Field label="Ngày ra ngoài"><input type="date" className={inputCls} style={inputStyle} value={editForm.ngay} onChange={(e) => setEditForm({ ...editForm, ngay: e.target.value })} /></Field>
+          <Field label="Giờ đi"><input type="time" className={inputCls} style={inputStyle} value={editForm.gioDi} onChange={(e) => setEditForm({ ...editForm, gioDi: e.target.value })} /></Field>
+          <Field label="Giờ dự kiến về"><input type="time" className={inputCls} style={inputStyle} value={editForm.gioVeDuKien} onChange={(e) => setEditForm({ ...editForm, gioVeDuKien: e.target.value })} /></Field>
+          <div className="md:col-span-2"><Field label="Lý do ra ngoài" required><input className={inputCls} style={inputStyle} value={editForm.lyDo} onChange={(e) => setEditForm({ ...editForm, lyDo: e.target.value })} /></Field></div>
+          <div className="md:col-span-2 flex gap-2"><Btn onClick={saveEdit}>Lưu thay đổi</Btn><Btn variant="outline" onClick={cancelEdit}>Huỷ</Btn></div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-start justify-between gap-3 p-3 flex-wrap" style={{ background: "#fff", borderLeft: `4px solid ${duyetColor[o.duyet || "Chờ duyệt"]}` }}>
+        <div className="flex items-start gap-3">
+          <div className="f-mono text-xs font-semibold shrink-0 w-8 text-center pt-0.5" style={{ color: T.amberDark }}>#{sttMap[o.id] || "—"}</div>
+          <div>
+            <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{o.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span></div>
+            <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
+            <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
+              {new Date(o.ngay).toLocaleDateString("vi-VN")} · Ra lúc {o.gioDi || "—"} · Dự kiến về {o.gioVeDuKien || "—"}
+              {o.trangThai === "Đã về" && <> · Đã về lúc {o.gioVeThucTe}</>}
+            </div>
+            <div className="f-mono text-[10px] mt-0.5 italic" style={{ color: T.inkSoft }}>
+              Đăng ký lúc {new Date(o.createdAt || o.id).toLocaleString("vi-VN")} · bởi {o.dangKyBoi || "—"}
+              {o.duyetBoi && o.duyet !== "Chờ duyệt" && <> · {o.duyet === "Đã duyệt" ? "duyệt" : "từ chối"} bởi {o.duyetBoi}</>}
+            </div>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: duyetColor[o.duyet || "Chờ duyệt"], color: "#fff" }}>{o.duyet || "Chờ duyệt"}</span>
+          {o.duyet === "Đã duyệt" && (
+            <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: o.trangThai === "Đã về" ? T.green : "#8A8F76", color: "#fff" }}>{o.trangThai}</span>
+          )}
+          {canApprove && (o.duyet || "Chờ duyệt") === "Chờ duyệt" && (
+            <>
+              <button onClick={() => setDuyet(o.id, "Đã duyệt")} title="Duyệt cho ra ngoài"><CheckCircle2 size={18} style={{ color: T.green }} /></button>
+              <button onClick={() => setDuyet(o.id, "Từ chối")} title="Từ chối"><X size={18} style={{ color: T.red }} /></button>
+            </>
+          )}
+          {canApprove && o.duyet === "Từ chối" && (
+            <button onClick={() => setDuyet(o.id, "Chờ duyệt")} title="Đưa lại vào hàng chờ duyệt"><Circle size={16} style={{ color: T.amberDark }} /></button>
+          )}
+          {o.duyet === "Đã duyệt" && o.trangThai !== "Đã về" && canAct(o) && (
+            <button onClick={() => markBack(o.id)} title="Xác nhận đã về"><CheckCircle2 size={18} style={{ color: T.green }} /></button>
+          )}
+          {canApprove && <button onClick={() => startEdit(o)} title="Sửa / đổi tên người ra ngoài"><Pencil size={14} style={{ color: T.green }} /></button>}
+          {canAct(o) && <button onClick={() => remove(o.id)} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>}
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: o.trangThai === "Đã về" ? T.green : T.red, color: "#fff" }}>{o.trangThai}</span>
-        {o.trangThai !== "Đã về" && canAct(o) && (
-          <button onClick={() => markBack(o.id)} title="Xác nhận đã về"><CheckCircle2 size={18} style={{ color: T.green }} /></button>
-        )}
-        {canAct(o) && <button onClick={() => remove(o.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
-      <SectionHeader icon={DoorOpen} eyebrow={`Hôm nay: ${todays.length} lượt · ${chuaVe} chưa về`} title="Đăng ký ra ngoài"
-        action={<Btn onClick={() => setShowForm((s) => !s)} disabled={isLocked}><Plus size={16} /> Đăng ký</Btn>} />
+      <SectionHeader icon={DoorOpen} eyebrow={`${new Date(viewDate).toLocaleDateString("vi-VN")}: ${approved.length} đã chốt · ${pending.length} chờ duyệt · ${chuaVe} chưa về`} title="Đăng ký ra ngoài"
+        action={<Btn onClick={openForm} disabled={isLocked}><Plus size={16} /> {canApprove ? "Thêm người ra ngoài" : "Đăng ký"}</Btn>} />
+
+      <div className="flex flex-wrap items-end gap-3 mb-5">
+        <Field label="Xem theo ngày">
+          <input type="date" className={inputCls} style={inputStyle} value={viewDate} onChange={(e) => setViewDate(e.target.value)} />
+        </Field>
+        {viewDate !== today && <Btn variant="outline" onClick={() => setViewDate(today)}>Về hôm nay</Btn>}
+      </div>
 
       {isLocked && (
         <div className="f-body text-sm mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.red, color: "#fff" }}>
@@ -1584,6 +1680,7 @@ function OutingTab({ user, perm }) {
           </div>
           <p className="f-body text-xs mt-2" style={{ color: T.inkSoft }}>
             Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — không ai tạo đăng ký mới được nữa, kể cả khi chưa bấm nút khoá thủ công.
+            Qua 0h ngày mới, mọi người lại đăng ký từ đầu như bình thường.
           </p>
         </div>
       )}
@@ -1591,6 +1688,11 @@ function OutingTab({ user, perm }) {
       {showForm && !isLocked && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
+          {canApprove && (
+            <div className="md:col-span-2 f-body text-xs italic" style={{ color: T.inkSoft }}>
+              Bạn thêm trực tiếp nên đăng ký này sẽ tự động ở trạng thái "Đã duyệt".
+            </div>
+          )}
           <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={form.namSinh} onChange={(e) => setForm({ ...form, namSinh: e.target.value })} placeholder="VD: 2004" /></Field>
           <Field label="Tiểu đội">
@@ -1603,21 +1705,37 @@ function OutingTab({ user, perm }) {
           <Field label="Giờ đi"><input type="time" className={inputCls} style={inputStyle} value={form.gioDi} onChange={(e) => setForm({ ...form, gioDi: e.target.value })} /></Field>
           <Field label="Giờ dự kiến về"><input type="time" className={inputCls} style={inputStyle} value={form.gioVeDuKien} onChange={(e) => setForm({ ...form, gioVeDuKien: e.target.value })} /></Field>
           <div className="md:col-span-2"><Field label="Lý do ra ngoài" required><input className={inputCls} style={inputStyle} value={form.lyDo} onChange={(e) => setForm({ ...form, lyDo: e.target.value })} placeholder="VD: Khám bệnh, mua đồ dùng cá nhân…" /></Field></div>
-          <div className="md:col-span-2"><Btn onClick={add}>Đăng ký</Btn></div>
+          <div className="md:col-span-2 flex gap-2"><Btn onClick={add}>{canApprove ? "Thêm & duyệt luôn" : "Đăng ký"}</Btn><Btn variant="outline" onClick={() => setShowForm(false)}>Huỷ</Btn></div>
         </div>
       )}
 
-      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đăng ký ra ngoài nào." /> : (
-        <div>
-          <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Hôm nay</div>
-          {todays.length === 0 ? <EmptyState text="Chưa có ai đăng ký ra ngoài hôm nay." /> : (
-            <div className="space-y-2 mb-6">{todays.map((o) => <Row key={o.id} o={o} />)}</div>
+      {loading ? <LoadingRow /> : dayItems.length === 0 ? (
+        <EmptyState text={`Chưa có đăng ký ra ngoài nào cho ngày ${new Date(viewDate).toLocaleDateString("vi-VN")}.`} />
+      ) : (
+        <div className="space-y-6">
+          <div>
+            <div className="f-display text-sm uppercase tracking-wider mb-2 flex items-center gap-2" style={{ color: T.green }}>
+              <CheckCircle2 size={15} /> Danh sách chốt được ra ngoài ({approved.length})
+            </div>
+            {approved.length === 0 ? (
+              <EmptyState text="Chưa có ai được duyệt cho ngày này." />
+            ) : (
+              <div className="space-y-2">{approved.map((o) => <Row key={o.id} o={o} />)}</div>
+            )}
+          </div>
+
+          {pending.length > 0 && (
+            <div>
+              <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Chờ duyệt ({pending.length})</div>
+              <div className="space-y-2">{pending.map((o) => <Row key={o.id} o={o} />)}</div>
+            </div>
           )}
-          {others.length > 0 && (
-            <>
-              <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Các ngày khác</div>
-              <div className="space-y-2">{others.map((o) => <Row key={o.id} o={o} />)}</div>
-            </>
+
+          {rejected.length > 0 && (
+            <div>
+              <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.red }}>Đã từ chối ({rejected.length})</div>
+              <div className="space-y-2">{rejected.map((o) => <Row key={o.id} o={o} />)}</div>
+            </div>
           )}
         </div>
       )}
@@ -2455,7 +2573,7 @@ const TABS = [
   { id: "roster", label: "Quân số", icon: Users },
   { id: "study", label: "Lịch học", icon: CalendarDays },
   { id: "duty", label: "Lịch trực", icon: MapPin },
-  { id: "outing", label: "Ra ngoài", icon: DoorOpen },
+  { id: "outing", label: "Đăng ký ra ngoài", icon: DoorOpen },
   { id: "attendance", label: "Điểm danh", icon: ClipboardCheck },
   { id: "docs", label: "Tài liệu", icon: FolderOpen },
   { id: "scores", label: "Điểm rèn luyện", icon: Award },
@@ -2590,19 +2708,20 @@ export default function App() {
           />
         )}
 
-        {/* Sidebar nav — trượt ra trên di động, cố định trên desktop */}
+        {/* Sidebar nav — trượt ra trên di động, dính cố định theo chiều cao màn hình trên desktop
+             để luôn thấy hết toàn bộ danh mục + logo tên lớp ở dưới cùng, không cần cuộn cả trang */}
         <nav
-          className={`fixed md:static inset-y-0 left-0 z-50 md:z-auto w-64 md:w-56 shrink-0 flex flex-col transform transition-transform duration-300 md:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}
-          style={{ background: T.green, minHeight: "100vh" }}
+          className={`fixed md:sticky md:top-0 inset-y-0 left-0 z-50 md:z-auto w-64 md:w-56 shrink-0 flex flex-col transform transition-transform duration-300 md:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}
+          style={{ background: T.green, height: "100vh" }}
         >
-          <div className="flex items-center justify-between px-5 py-3.5 md:hidden" style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
+          <div className="flex items-center justify-between px-5 py-3 md:hidden" style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
             <span className="f-display text-xs uppercase tracking-widest" style={{ color: T.amber }}>Danh mục</span>
             <button onClick={() => setNavOpen(false)} style={{ color: T.paper }} aria-label="Đóng menu">
               <X size={20} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin py-1">
+          <div className="flex-1 overflow-y-auto scrollbar-thin py-0.5">
             {visibleTabs.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
@@ -2611,7 +2730,7 @@ export default function App() {
                 <button
                   key={t.id}
                   onClick={() => goToTab(t.id)}
-                  className={`nav-item w-full flex items-center gap-3 px-5 py-3 f-display text-sm uppercase tracking-wide text-left ${active ? "nav-item-active" : ""}`}
+                  className={`nav-item w-full flex items-center gap-2.5 px-4 py-2 f-display text-[12.5px] uppercase tracking-wide text-left ${active ? "nav-item-active" : ""}`}
                   style={{
                     background: active ? T.amber : "transparent",
                     color: active ? T.greenDark : T.paper,
@@ -2619,16 +2738,16 @@ export default function App() {
                   }}
                 >
                   <span
-                    className="icon-badge"
+                    className="icon-badge icon-badge-sm"
                     style={{ background: active ? "rgba(19,31,25,0.12)" : "rgba(255,255,255,0.08)" }}
                   >
-                    <Icon size={14} />
+                    <Icon size={12} />
                   </span>
-                  <span className="flex-1">{t.label}</span>
+                  <span className="flex-1 leading-tight">{t.label}</span>
                   {count > 0 && (
                     <span
                       className="f-mono shrink-0 inline-flex items-center justify-center rounded-full"
-                      style={{ background: T.red, color: "#fff", minWidth: 18, height: 18, fontSize: 10, fontWeight: 700, padding: "0 5px" }}
+                      style={{ background: T.red, color: "#fff", minWidth: 17, height: 17, fontSize: 9.5, fontWeight: 700, padding: "0 5px" }}
                       title={`${count} mục mới chưa xem`}
                     >
                       {count > 99 ? "99+" : count}
@@ -2640,10 +2759,10 @@ export default function App() {
           </div>
 
           <div
-            className="flex items-center gap-2.5 px-5 py-4"
+            className="flex items-center gap-2.5 px-5 py-3 shrink-0"
             style={{ borderTop: "1px solid rgba(255,255,255,0.15)" }}
           >
-            <Emblem size={26} />
+            <Emblem size={24} />
             <span className="f-mono text-[9.5px] uppercase tracking-widest" style={{ color: "rgba(237,230,214,0.6)" }}>
               LT31 · B2 · CSGT
             </span>
