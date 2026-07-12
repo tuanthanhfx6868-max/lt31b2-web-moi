@@ -91,6 +91,11 @@ const FONT_STYLE = `
 .btn-press:hover { filter: brightness(1.08); }
 .btn-press:active { transform: translateY(1px); }
 .nav-item { transition: background-color 0.15s ease, border-color 0.15s ease; position: relative; }
+/* Kẻ đường phân cách cho mọi bảng trong web — áp class "table-lines" vào thẻ <table> */
+.table-lines { border-collapse: collapse; }
+.table-lines th, .table-lines td { border-bottom: 1px solid #E2D9C4; }
+.table-lines thead tr { border-bottom: 2px solid #C9A227; }
+.table-lines tbody tr:last-child td { border-bottom: none; }
 .nav-item:hover:not(.nav-item-active) { background: rgba(255,255,255,0.06) !important; }
 .icon-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1204,7 +1209,7 @@ function RosterTab({ perm, user }) {
         <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
       ) : (
         <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 370 }}>
-          <table className="w-full f-body" style={{ fontSize: "12.5px", borderCollapse: "collapse" }}>
+          <table className="w-full f-body table-lines" style={{ fontSize: "12.5px" }}>
             <thead>
               <tr className="f-mono text-[9.5px] uppercase tracking-widest" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
                 <th className="text-left px-2.5 py-2 w-8" style={{ borderRight: "1px solid rgba(237,230,214,0.25)" }}>STT</th>
@@ -1770,7 +1775,7 @@ function DutyScheduleTab({ user, perm }) {
 
       {checkpoint.loading ? <LoadingRow /> : sortedCheckpoints.length === 0 ? <EmptyState text="Chưa có phân công trực chốt nào." /> : (
         <div className="overflow-x-auto overflow-y-auto stamp-border mb-8" style={{ background: "#fff", maxHeight: 290 }}>
-          <table className="w-full text-xs f-body">
+          <table className="w-full text-xs f-body table-lines">
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
                 <th className="text-left px-2.5 py-1.5 w-8">STT</th>
@@ -1816,20 +1821,20 @@ function DutyScheduleTab({ user, perm }) {
                   <tr key={c.id} onClick={() => toggleSelectCp(c.id)} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedCpId === c.id)}>
                     <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: T.amberDark }}>{i + 1}</td>
                     <td className="px-2.5 py-1.5 f-mono">{new Date(c.ngay).toLocaleDateString("vi-VN")}</td>
-                    <td className="px-2.5 py-1.5 font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.chotLabel}
-                        {perm.canManage && (
-                          <button onClick={() => startEditCheckpoint(c)} title="Sửa thông tin (khi có sai sót)">
-                            <Pencil size={12} style={{ color: T.green }} />
-                          </button>
-                        )}
-                      </span>
-                    </td>
+                    <td className="px-2.5 py-1.5 font-medium">{c.chotLabel}</td>
                     <td className="px-2.5 py-1.5 f-mono">TĐ{c.tieuDoi}</td>
                     <td className="px-2.5 py-1.5 f-mono">{c.ca || "—"}</td>
                     <td className="px-2.5 py-1.5" style={{ color: T.inkSoft }}>{c.ghiChu || "—"}</td>
-                    <td className="px-2.5 py-1.5 text-right">{perm.canManage && <button onClick={() => removeCheckpoint(c.id)}><Trash2 size={13} style={{ color: T.red }} /></button>}</td>
+                    <td className="px-2.5 py-1.5">
+                      <div className="flex items-center justify-end gap-2">
+                        {perm.canManage && (
+                          <button onClick={() => startEditCheckpoint(c)} title="Sửa thông tin (khi có sai sót)">
+                            <Pencil size={13} style={{ color: T.green }} />
+                          </button>
+                        )}
+                        {perm.canManage && <button onClick={() => removeCheckpoint(c.id)} title="Xoá"><Trash2 size={13} style={{ color: T.red }} /></button>}
+                      </div>
+                    </td>
                   </tr>
                 )
               ))}
@@ -2121,7 +2126,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
       ) : (
         <div className="overflow-x-auto mt-3">
-          <table className="w-full text-sm f-body" style={{ fontSize: "12.5px" }}>
+          <table className="w-full text-sm f-body table-lines" style={{ fontSize: "12.5px" }}>
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-2 py-1.5 w-8">STT</th>
@@ -2671,7 +2676,7 @@ function AttendanceTab({ user, perm }) {
         <>
           <div className="f-display text-xs uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Tỷ lệ chuyên cần (tổng)</div>
           <div className="overflow-x-auto overflow-y-auto stamp-border" style={{ background: "#fff", maxHeight: 290 }}>
-            <table className="w-full text-xs f-body">
+            <table className="w-full text-xs f-body table-lines">
               <thead>
                 <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
                   <th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
@@ -2802,7 +2807,7 @@ function ScoresTab({ perm }) {
 
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có điểm nào được ghi." /> : (
         <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
-          <table className="w-full text-sm f-body">
+          <table className="w-full text-sm f-body table-lines">
             <thead>
               <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-3 py-2">Họ tên</th><th className="text-left px-3 py-2">Hạng mục</th>
@@ -3608,7 +3613,7 @@ function PermissionsTab({ permissions, setPermissions, permLoading }) {
         <EmptyState text="Chưa gán quyền cho ai — mọi người hiện đều là Thành viên mặc định." />
       ) : (
         <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
-          <table className="w-full text-sm f-body">
+          <table className="w-full text-sm f-body table-lines">
             <thead>
               <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-3 py-2">Họ tên</th><th className="text-left px-3 py-2">Vai trò</th><th className="px-3 py-2"></th>
