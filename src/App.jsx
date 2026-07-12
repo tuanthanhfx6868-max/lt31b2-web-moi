@@ -390,6 +390,45 @@ function useOutingLock() {
   return { config, setConfig: update, loading };
 }
 
+// Ảnh chụp danh sách ra ngoài đã được lãnh đạo ký duyệt — lưu riêng theo từng ngày (date: yyyy-mm-dd)
+function useOutingApprovalPhoto(date) {
+  const docId = `outingPhoto_${date || "none"}`;
+  const [data, setData] = useState({ url: "", uploadedBy: "", uploadedAt: "" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const ref = doc(db, "lt31b2", docId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists() && snap.data().value) {
+          try { setData(JSON.parse(snap.data().value)); } catch (e) { setData({ url: "", uploadedBy: "", uploadedAt: "" }); }
+        } else {
+          setData({ url: "", uploadedBy: "", uploadedAt: "" });
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, [docId]);
+
+  const save = async (next) => {
+    setData(next);
+    try {
+      await setDoc(doc(db, "lt31b2", docId), { value: JSON.stringify(next) });
+      return true;
+    } catch (e) {
+      const msg = `Lưu ảnh danh sách ký duyệt thất bại — ${e?.code || ""} ${e?.message || e}`;
+      reportGlobalError(msg);
+      return false;
+    }
+  };
+
+  return { data, save, loading };
+}
+
 function useRole(user, isAdminLogin) {
   const { items: permissions, setItems: setPermissions, loading: permLoading } = useSharedList("permissions");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
@@ -1490,6 +1529,7 @@ function OutingTab({ user, perm }) {
   const lock = useOutingLock();
   const today = new Date().toISOString().slice(0, 10);
   const [viewDate, setViewDate] = useState(today);
+  const approvalPhoto = useOutingApprovalPhoto(viewDate);
   const [form, setForm] = useState({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
@@ -1523,7 +1563,9 @@ function OutingTab({ user, perm }) {
   };
 
   const add = async () => {
-    if (isLocked) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới."); return; }
+    // Khi đã khoá, chỉ Quản trị / Trung đội trưởng / Trung đội phó mới được thêm thẳng người ra ngoài
+    // (dành cho trường hợp có nhu cầu phát sinh mà không đăng ký kịp); thành viên thường vẫn bị chặn.
+    if (isLocked && !canApprove) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới. Liên hệ Trung đội trưởng/phó nếu có nhu cầu phát sinh."); return; }
     if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
     setWarn("");
     // Quản trị / TĐT / TĐP tự thêm người thì coi như đã duyệt luôn; thành viên tự đăng ký thì vào hàng chờ duyệt.
@@ -1548,6 +1590,13 @@ function OutingTab({ user, perm }) {
   };
   const setDuyet = async (id, duyet) => {
     await setItems(items.map((i) => (i.id === id ? { ...i, duyet, duyetBoi: user } : i)));
+  };
+
+  const saveApprovalPhoto = async (url) => {
+    await approvalPhoto.save({ url, uploadedBy: user, uploadedAt: new Date().toISOString() });
+  };
+  const removeApprovalPhoto = async () => {
+    await approvalPhoto.save({ url: "", uploadedBy: "", uploadedAt: "" });
   };
 
   const startEdit = (o) => {
@@ -1648,7 +1697,7 @@ function OutingTab({ user, perm }) {
   return (
     <div>
       <SectionHeader icon={DoorOpen} eyebrow={`${new Date(viewDate).toLocaleDateString("vi-VN")}: ${approved.length} đã chốt · ${pending.length} chờ duyệt · ${chuaVe} chưa về`} title="Đăng ký ra ngoài"
-        action={<Btn onClick={openForm} disabled={isLocked}><Plus size={16} /> {canApprove ? "Thêm người ra ngoài" : "Đăng ký"}</Btn>} />
+        action={<Btn onClick={openForm} disabled={isLocked && !canApprove}><Plus size={16} /> {canApprove ? "Thêm người ra ngoài" : "Đăng ký"}</Btn>} />
 
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <Field label="Xem theo ngày">
@@ -1660,6 +1709,7 @@ function OutingTab({ user, perm }) {
       {isLocked && (
         <div className="f-body text-sm mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.red, color: "#fff" }}>
           <DoorOpen size={16} /> <b className="f-display uppercase text-xs tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
+          {canApprove && <span className="italic"> Riêng bạn (Quản trị/Trung đội trưởng/phó) vẫn thêm người ra ngoài được bình thường.</span>}
         </div>
       )}
 
@@ -1679,16 +1729,21 @@ function OutingTab({ user, perm }) {
             {lock.config.lockAt && <Btn variant="outline" onClick={clearScheduledLock}>Xoá giờ khoá</Btn>}
           </div>
           <p className="f-body text-xs mt-2" style={{ color: T.inkSoft }}>
-            Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — không ai tạo đăng ký mới được nữa, kể cả khi chưa bấm nút khoá thủ công.
-            Qua 0h ngày mới, mọi người lại đăng ký từ đầu như bình thường.
+            Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — thành viên không tự đăng ký được nữa, nhưng Quản trị/Trung đội trưởng/phó
+            vẫn thêm thẳng người ra ngoài được (dành cho trường hợp phát sinh không kịp đăng ký). Qua 0h ngày mới, mọi người lại đăng ký từ đầu như bình thường.
           </p>
         </div>
       )}
 
-      {showForm && !isLocked && (
+      {showForm && (!isLocked || canApprove) && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          {canApprove && (
+          {canApprove && isLocked && (
+            <div className="md:col-span-2 f-body text-xs px-3 py-2" style={{ color: T.red, background: "#F7E3E6", borderLeft: `3px solid ${T.red}` }}>
+              Đăng ký đang bị khoá đối với thành viên — bạn thêm thẳng người này với vai trò chỉ huy, đăng ký sẽ tự động ở trạng thái "Đã duyệt".
+            </div>
+          )}
+          {canApprove && !isLocked && (
             <div className="md:col-span-2 f-body text-xs italic" style={{ color: T.inkSoft }}>
               Bạn thêm trực tiếp nên đăng ký này sẽ tự động ở trạng thái "Đã duyệt".
             </div>
@@ -1721,6 +1776,36 @@ function OutingTab({ user, perm }) {
               <EmptyState text="Chưa có ai được duyệt cho ngày này." />
             ) : (
               <div className="space-y-2">{approved.map((o) => <Row key={o.id} o={o} />)}</div>
+            )}
+          </div>
+
+          <div>
+            <div className="f-display text-sm uppercase tracking-wider mb-2 flex items-center gap-2" style={{ color: T.amberDark }}>
+              <Paperclip size={15} /> Ảnh danh sách đã ký duyệt (lãnh đạo)
+            </div>
+            {approvalPhoto.loading ? <LoadingRow /> : approvalPhoto.data.url ? (
+              <div className="stamp-border p-3" style={{ background: "#fff" }}>
+                <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer">
+                  <img src={approvalPhoto.data.url} alt="Danh sách ra ngoài đã ký duyệt" className="max-w-full md:max-w-xs" style={{ border: `1px solid ${T.paperDark}` }} />
+                </a>
+                <div className="f-mono text-[10px] mt-2" style={{ color: T.inkSoft }}>
+                  Tải lên bởi {approvalPhoto.data.uploadedBy || "—"} lúc {approvalPhoto.data.uploadedAt ? new Date(approvalPhoto.data.uploadedAt).toLocaleString("vi-VN") : "—"}
+                </div>
+                {canApprove && (
+                  <button onClick={removeApprovalPhoto} className="f-display text-[11px] uppercase tracking-wider mt-2 flex items-center gap-1" style={{ color: T.red }}>
+                    <Trash2 size={12} /> Xoá ảnh, tải lại
+                  </button>
+                )}
+              </div>
+            ) : canApprove ? (
+              <div className="stamp-border p-3" style={{ background: "#fff" }}>
+                <p className="f-body text-xs mb-1" style={{ color: T.inkSoft }}>
+                  Chụp/tải ảnh tờ danh sách giấy đã có chữ ký duyệt của lãnh đạo cho ngày {new Date(viewDate).toLocaleDateString("vi-VN")}, để lưu làm bằng chứng đối chiếu.
+                </p>
+                <UploadField onUploaded={saveApprovalPhoto} />
+              </div>
+            ) : (
+              <EmptyState text="Chưa có ảnh danh sách ký duyệt cho ngày này." />
             )}
           </div>
 
