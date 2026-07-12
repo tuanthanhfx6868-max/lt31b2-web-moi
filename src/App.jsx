@@ -1724,7 +1724,6 @@ function OutingTab({ user, perm }) {
           <div>
             <div className="f-body text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: T.ink }}>
               {o.name}
-              <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
               <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· {o.namSinh || "—"} · TĐ{o.tieuDoi}</span>
             </div>
             <div className="f-body text-xs mt-0.5" style={{ color: T.inkSoft }}>{o.lyDo}</div>
@@ -1739,6 +1738,7 @@ function OutingTab({ user, perm }) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
           <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: duyetColor[o.duyet || "Chờ duyệt"], color: "#fff" }}>{o.duyet || "Chờ duyệt"}</span>
           {o.duyet === "Đã duyệt" && (
             <span className="f-display text-[10px] uppercase tracking-wider px-2 py-1" style={{ background: o.trangThai === "Đã về" ? T.green : "#8A8F76", color: "#fff" }}>{o.trangThai}</span>
