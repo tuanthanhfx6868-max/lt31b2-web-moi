@@ -1589,7 +1589,7 @@ function DutyScheduleTab({ user, perm }) {
     setShowCForm(false);
   };
   const removeCheckpoint = async (id) => checkpoint.setItems(checkpoint.items.filter((i) => i.id !== id));
-  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => new Date(b.ngay) - new Date(a.ngay));
+  const sortedCheckpoints = [...checkpoint.items].sort((a, b) => itemCreatedAt(b) - itemCreatedAt(a));
 
   // Sửa phân công trực chốt khi có sai sót (chỉ huy sửa được)
   const [editingCpId, setEditingCpId] = useState(null);
@@ -2572,26 +2572,26 @@ function AttendanceTab({ user, perm }) {
 
   return (
     <div>
-      <SectionHeader icon={ClipboardCheck} eyebrow={total ? `Có mặt: ${coMat}/${total}` : "Chưa có quân số"} title="Điểm danh hằng ngày"
-        action={<input type="date" className={`${inputCls} !w-auto`} style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />} />
+      <SectionHeader compact icon={ClipboardCheck} eyebrow={total ? `Có mặt: ${coMat}/${total}` : "Chưa có quân số"} title="Điểm danh hằng ngày"
+        action={<input type="date" className={`${inputCls} !w-auto`} style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px" }} value={date} onChange={(e) => setDate(e.target.value)} />} />
 
       {roster.items.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5 mb-4">
           {summary.map((s) => (
-            <div key={s.status} className="p-3 text-center" style={{ background: "#fff", borderTop: `3px solid ${statusColor[s.status]}` }}>
-              <div className="f-display text-2xl font-semibold" style={{ color: statusColor[s.status] }}>{s.count}</div>
-              <div className="f-mono text-[10px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>{s.status}</div>
+            <div key={s.status} className="p-2 text-center" style={{ background: "#fff", borderTop: `3px solid ${statusColor[s.status]}` }}>
+              <div className="f-display text-base font-semibold" style={{ color: statusColor[s.status] }}>{s.count}</div>
+              <div className="f-mono text-[9px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>{s.status}</div>
             </div>
           ))}
-          <div className="p-3 text-center" style={{ background: "#fff", borderTop: `3px solid #C9BFA5` }}>
-            <div className="f-display text-2xl font-semibold" style={{ color: T.inkSoft }}>{chuaDiemDanh}</div>
-            <div className="f-mono text-[10px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>Chưa điểm danh</div>
+          <div className="p-2 text-center" style={{ background: "#fff", borderTop: `3px solid #C9BFA5` }}>
+            <div className="f-display text-base font-semibold" style={{ color: T.inkSoft }}>{chuaDiemDanh}</div>
+            <div className="f-mono text-[9px] uppercase tracking-wider mt-0.5" style={{ color: T.inkSoft }}>Chưa điểm danh</div>
           </div>
         </div>
       )}
 
       {!canMarkAll && (
-        <p className="f-body text-xs mb-3 italic" style={{ color: T.inkSoft }}>
+        <p className="f-body text-[10.5px] mb-2.5 italic" style={{ color: T.inkSoft }}>
           Bạn chỉ điểm danh được cho chính mình. Việc điểm danh dùm cả trung đội chỉ dành cho Quản trị, Trung đội trưởng, Trung đội phó.
         </p>
       )}
@@ -2601,25 +2601,25 @@ function AttendanceTab({ user, perm }) {
       ) : markableRoster.length === 0 ? (
         <EmptyState text="Không tìm thấy tên của bạn trong danh sách quân số — liên hệ chỉ huy để được thêm vào Quân số." />
       ) : (
-        <div className="space-y-2 mb-8">
+        <div className="space-y-1.5 mb-8 overflow-y-auto" style={{ maxHeight: 300 }}>
           {markableRoster.map((m) => {
             const rec = recordFor(m.id);
             return (
-              <div key={m.id} className="flex items-center justify-between gap-3 p-3 flex-wrap" style={{ background: "#fff" }}>
-                <div className="f-body text-sm font-medium" style={{ color: T.ink }}>{m.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>· TĐ{m.tieuDoi || "—"}</span></div>
-                <div className="flex gap-1.5 flex-wrap">
+              <div key={m.id} className="flex items-center justify-between gap-2 p-2 flex-wrap" style={{ background: "#fff" }}>
+                <div className="f-body text-xs font-medium" style={{ color: T.ink }}>{m.name} <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>· TĐ{m.tieuDoi || "—"}</span></div>
+                <div className="flex gap-1 flex-wrap">
                   {STATUSES.map((s) => (
                     <button
                       key={s}
                       onClick={() => setStatus(m, s)}
-                      className="f-display text-[11px] uppercase tracking-wider px-2.5 py-1 flex items-center gap-1"
+                      className="f-display text-[9.5px] uppercase tracking-wider px-2 py-0.5 flex items-center gap-1"
                       style={{
                         background: rec?.status === s ? statusColor[s] : "transparent",
                         color: rec?.status === s ? "#fff" : statusColor[s],
                         border: `1px solid ${statusColor[s]}`,
                       }}
                     >
-                      {rec?.status === s ? <CheckCircle2 size={12} /> : <Circle size={12} />} {s}
+                      {rec?.status === s ? <CheckCircle2 size={10} /> : <Circle size={10} />} {s}
                     </button>
                   ))}
                 </div>
@@ -2631,20 +2631,20 @@ function AttendanceTab({ user, perm }) {
 
       {roster.items.length > 0 && (
         <>
-          <div className="f-display text-sm uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Tỷ lệ chuyên cần (tổng)</div>
-          <div className="overflow-x-auto stamp-border" style={{ background: "#fff" }}>
-            <table className="w-full text-sm f-body">
+          <div className="f-display text-xs uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Tỷ lệ chuyên cần (tổng)</div>
+          <div className="overflow-x-auto overflow-y-auto stamp-border" style={{ background: "#fff", maxHeight: 290 }}>
+            <table className="w-full text-xs f-body">
               <thead>
-                <tr className="f-mono text-[11px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
-                  <th className="text-left px-3 py-2">Họ tên</th><th className="text-left px-3 py-2">Số lần điểm danh</th><th className="text-left px-3 py-2">% có mặt</th>
+                <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                  <th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.map((m, i) => (
                   <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
-                    <td className="px-3 py-2 font-medium">{m.name}</td>
-                    <td className="px-3 py-2 f-mono">{m.total}</td>
-                    <td className="px-3 py-2 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
+                    <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
+                    <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
+                    <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
                       {m.pct === null ? "—" : `${m.pct}%`}
                     </td>
                   </tr>
