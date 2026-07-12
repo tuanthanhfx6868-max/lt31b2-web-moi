@@ -1027,13 +1027,13 @@ function RosterTab({ perm, user }) {
       {/* ---- Bật/tắt cho phép thành viên tự nhập thông tin của mình ---- */}
       {canEditAll && (
         <div className="stamp-border p-4 mb-5" style={{ background: "#FBF3DD" }}>
-          <div className="f-display text-xs uppercase tracking-widest mb-2" style={{ color: T.amberDark }}>Cho phép tự nhập thông tin quân số</div>
+          <div className="f-display text-[10px] uppercase tracking-widest mb-2" style={{ color: T.amberDark }}>Cho phép tự nhập thông tin quân số</div>
           <div className="flex flex-wrap items-center gap-3">
             <Btn variant={selfEntryOpen ? "danger" : "outline"} onClick={toggleSelfEntry} disabled={selfEntryLoading}>
               {selfEntryOpen ? "Đang mở — bấm để đóng" : "Mở cho thành viên tự nhập"}
             </Btn>
           </div>
-          <p className="f-body text-xs mt-2" style={{ color: T.inkSoft }}>
+          <p className="f-body text-[10.5px] leading-snug mt-2" style={{ color: T.inkSoft }}>
             Khi mở, mọi thành viên (kể cả chưa được gán quyền quản lý) có thể tự thêm thông tin của chính mình
             vào danh sách quân số. Khi đóng (mặc định), chỉ Quản trị / Cán bộ được gán quyền mới thêm được
             thành viên mới — còn việc sửa thông tin từng dòng thì chỉ người có tên sẵn trong danh sách (hoặc chỉ huy)
@@ -1183,10 +1183,10 @@ function RosterTab({ perm, user }) {
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : filteredItems.length === 0 ? (
         <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
       ) : (
-        <div className="overflow-x-auto stamp-border card-sheet" style={{ background: "#fff" }}>
+        <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 460 }}>
           <table className="w-full f-body" style={{ fontSize: "12.5px", borderCollapse: "collapse" }}>
             <thead>
-              <tr className="f-mono text-[9.5px] uppercase tracking-widest" style={{ background: T.green, color: T.paper }}>
+              <tr className="f-mono text-[9.5px] uppercase tracking-widest" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
                 <th className="text-left px-2.5 py-2 w-8">STT</th>
                 <th className="text-left px-2.5 py-2">Mã số</th><th className="text-left px-2.5 py-2 min-w-[110px]">Họ tên</th>
                 <th className="text-left px-2.5 py-2 min-w-[90px]">Chức vụ</th><th className="text-left px-2.5 py-2 whitespace-nowrap">Tiểu đội</th>
@@ -2339,28 +2339,28 @@ function OutingTab({ user, perm }) {
       </div>
 
       {isLocked && (
-        <div className="f-body text-sm mb-5 px-4 py-2.5 flex items-center gap-2" style={{ background: T.red, color: "#fff" }}>
-          <DoorOpen size={16} /> <b className="f-display uppercase text-xs tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
-          {canApprove && <span className="italic"> Riêng bạn (Quản trị/Trung đội trưởng/phó) vẫn thêm người ra ngoài được bình thường.</span>}
+        <div className="f-body text-xs mb-5 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ background: T.red, color: "#fff" }}>
+          <DoorOpen size={14} /> <b className="f-display uppercase text-[10.5px] tracking-wide">Đã hết thời gian đăng ký:</b> {lockMessage}
+          {canApprove && <span className="italic text-[11px]"> Riêng bạn (Quản trị/Trung đội trưởng/phó) vẫn thêm người ra ngoài được bình thường.</span>}
         </div>
       )}
 
       {perm.canManage && (
-        <div className="stamp-border p-4 mb-5" style={{ background: "#FBF3DD" }}>
-          <div className="f-display text-xs uppercase tracking-widest mb-3" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
-          <div className="flex flex-wrap items-center gap-3 mb-3">
+        <div className="stamp-border p-3 mb-5" style={{ background: "#FBF3DD" }}>
+          <div className="f-display text-[10px] uppercase tracking-widest mb-2" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             <Btn variant={lock.config.manualLock ? "danger" : "outline"} onClick={toggleManualLock}>
               {lock.config.manualLock ? "Đang khoá thủ công — bấm để mở khoá" : "Khoá đăng ký ngay (thủ công)"}
             </Btn>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-2">
             <Field label="Tự động khoá đến thời điểm">
               <input type="datetime-local" className={inputCls} style={inputStyle} value={lockAtInput} onChange={(e) => setLockAtInput(e.target.value)} />
             </Field>
             <Btn onClick={saveScheduledLock}>Lưu giờ khoá</Btn>
             {lock.config.lockAt && <Btn variant="outline" onClick={clearScheduledLock}>Xoá giờ khoá</Btn>}
           </div>
-          <p className="f-body text-xs mt-2" style={{ color: T.inkSoft }}>
+          <p className="f-body text-[10.5px] leading-snug mt-2" style={{ color: T.inkSoft }}>
             Đến đúng thời điểm đã đặt, hệ thống sẽ tự động khoá — thành viên không tự đăng ký được nữa, nhưng Quản trị/Trung đội trưởng/phó
             vẫn thêm thẳng người ra ngoài được (dành cho trường hợp phát sinh không kịp đăng ký). Qua 0h ngày mới, mọi người lại đăng ký từ đầu như bình thường.
           </p>
