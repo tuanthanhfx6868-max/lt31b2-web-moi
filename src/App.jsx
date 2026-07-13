@@ -2214,6 +2214,187 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
   );
 }
 
+/* ============ TAB: LỊCH NGHỈ (Nghỉ cuối tuần) ============
+   Chức năng giống hệt phụ lục "Trực cuối tuần" (tab Lịch trực), chỉ đổi tên hiển thị:
+     "Trực cuối tuần" → "Nghỉ cuối tuần", "Danh sách trực" → "Danh sách nghỉ".
+   Khác biệt duy nhất: KHÔNG tạo đợt nghỉ / KHÔNG thêm người thủ công ở đây — mọi thứ được liên kết
+   trực tiếp với "Danh sách trung đội" (Quân số) và phụ lục "Trực cuối tuần":
+     - Thời gian từng đợt nghỉ lấy y hệt từ các đợt đã tạo bên "Trực cuối tuần".
+     - "Danh sách nghỉ" = toàn bộ Quân số, TRỪ những người đã có trong "Danh sách trực" của đúng đợt đó
+       (khớp theo Họ và tên) — phần còn lại tự động là người nghỉ, không cần nhập tay.
+   Trạng thái "Thẻ ra vào cổng" của từng người trong Danh sách nghỉ vẫn thao tác được như cũ, lưu kèm
+   ngay trên đợt nghỉ đó (trong phụ lục Trực cuối tuần) nên luôn đồng bộ 2 bên.
+*/
+function WeekendOffTab({ user, perm }) {
+  const { items, setItems, loading } = useSharedList("weekendRest");
+  const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const computeCurrentId = (list) => {
+    if (list.length === 0) return null;
+    const active = list.find((e) => e.fromDate && e.toDate && e.fromDate <= todayStr && todayStr <= e.toDate);
+    if (active) return active.id;
+    const upcoming = [...list].filter((e) => e.fromDate > todayStr).sort((a, b) => a.fromDate.localeCompare(b.fromDate))[0];
+    if (upcoming) return upcoming.id;
+    const past = [...list].filter((e) => e.toDate < todayStr).sort((a, b) => b.toDate.localeCompare(a.toDate))[0];
+    return past ? past.id : list[0].id;
+  };
+
+  const currentId = computeCurrentId(items);
+  const [viewEntryId, setViewEntryId] = useState(currentId);
+  const prevCurrentRef = useRef(currentId);
+
+  useEffect(() => {
+    if (viewEntryId === prevCurrentRef.current && currentId !== prevCurrentRef.current) {
+      setViewEntryId(currentId);
+    }
+    if (viewEntryId && !items.find((e) => e.id === viewEntryId)) {
+      setViewEntryId(currentId);
+    }
+    prevCurrentRef.current = currentId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, items]);
+
+  const sortedEntries = [...items].sort((a, b) => (b.fromDate || "").localeCompare(a.fromDate || ""));
+  const viewEntry = items.find((e) => e.id === viewEntryId) || null;
+  const entryLabel = (e) =>
+    `${e.fromTime || "17:00"} ${e.fromDate ? new Date(e.fromDate).toLocaleDateString("vi-VN") : "—"} → ${e.toTime || "21:00"} ${e.toDate ? new Date(e.toDate).toLocaleDateString("vi-VN") : "—"}` +
+    (e.toDate && e.toDate < todayStr ? "  (đã qua)" : e.fromDate && e.fromDate > todayStr ? "  (sắp tới)" : "  (đang diễn ra)");
+
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
+
+  // Danh sách nghỉ = Quân số - Danh sách trực (của đúng đợt đang xem), khớp theo Họ và tên.
+  const dutyNameSet = new Set((viewEntry?.members || []).map((m) => normalizeName(m.hoTen)));
+  const restMembers = rosterItems.filter((r) => !dutyNameSet.has(normalizeName(r.name)));
+  const sortedRestMembers = [...restMembers].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
+
+  const canApprove = perm.isAdmin || perm.isCommandRole;
+  const setRestThe = async (rosterId, trangThai) => {
+    if (!viewEntry) return;
+    const nextRestStatus = { ...(viewEntry.restStatus || {}), [rosterId]: trangThai };
+    const next = items.map((e) => (e.id === viewEntry.id ? { ...e, restStatus: nextRestStatus } : e));
+    await setItems(next);
+  };
+
+  return (
+    <div>
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Nghỉ cuối tuần — thời gian nghỉ" />
+
+      <p className="f-body text-xs mb-4" style={{ color: T.inkSoft }}>
+        Danh sách nghỉ được lấy tự động từ Quân số, trừ đi những người đã có trong Danh sách trực ở phụ lục
+        "Trực cuối tuần" (tab Lịch trực) — không cần tạo đợt nghỉ hay thêm người ở đây. Muốn tạo đợt nghỉ
+        mới hoặc thêm/sửa Danh sách trực, vào tab <b>Lịch trực → Trực cuối tuần</b>.
+      </p>
+
+      {(loading || rosterLoading) ? <LoadingRow /> : items.length === 0 ? (
+        <EmptyState text="Chưa có đợt nghỉ cuối tuần nào — vào tab Lịch trực → Trực cuối tuần để tạo đợt nghỉ." />
+      ) : (
+        <>
+          <div className="mb-4 max-w-md">
+            <Field label="Xem đợt nghỉ">
+              <select className={inputCls} style={inputStyle} value={viewEntryId || ""} onChange={(e) => setViewEntryId(Number(e.target.value))}>
+                {sortedEntries.map((e) => (
+                  <option key={e.id} value={e.id}>{entryLabel(e)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {viewEntry && (
+            <div className="stamp-border p-4" style={{ background: "#fff" }}>
+              <div className="f-display font-semibold text-sm flex items-center gap-2" style={{ color: T.green }}>
+                <CalendarDays size={15} />
+                Nghỉ từ {viewEntry.fromTime || "17:00"} ngày {viewEntry.fromDate ? new Date(viewEntry.fromDate).toLocaleDateString("vi-VN") : "—"}
+                {" → "}
+                {viewEntry.toTime || "21:00"} ngày {viewEntry.toDate ? new Date(viewEntry.toDate).toLocaleDateString("vi-VN") : "—"}
+              </div>
+              {viewEntry.ghiChu && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{viewEntry.ghiChu}</div>}
+              {viewEntry.url && (
+                isImage(viewEntry.url) ? (
+                  <a href={viewEntry.url} target="_blank" rel="noreferrer" className="block mt-2">
+                    <img src={viewEntry.url} alt="Phụ lục" className="max-w-[220px] max-h-48 stamp-border" />
+                  </a>
+                ) : (
+                  <a href={viewEntry.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                    <Paperclip size={12} /> Xem file đính kèm
+                  </a>
+                )
+              )}
+
+              <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+                <span className="f-mono text-[13px] uppercase tracking-widest font-bold" style={{ color: T.amberDark }}>
+                  Danh sách nghỉ ({sortedRestMembers.length} người)
+                </span>
+              </div>
+
+              <div className="mt-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+                <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
+                  <Paperclip size={13} /> File ký duyệt của lãnh đạo (tuần này)
+                </div>
+                {viewEntry.approvalUrl ? (
+                  <div>
+                    {isImage(viewEntry.approvalUrl) ? (
+                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer">
+                        <img src={viewEntry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+                      </a>
+                    ) : (
+                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                        <Paperclip size={12} /> Xem file đã ký duyệt
+                      </a>
+                    )}
+                    <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
+                      Tải lên bởi {viewEntry.approvalUploadedBy || "—"} lúc {viewEntry.approvalUploadedAt ? new Date(viewEntry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa có file ký duyệt của lãnh đạo cho tuần này.</div>
+                )}
+              </div>
+
+              {sortedRestMembers.length === 0 ? (
+                <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Không có ai trong danh sách nghỉ đợt này.</div>
+              ) : (
+                <div className="overflow-x-auto mt-3">
+                  <table className="w-full text-sm f-body table-lines" style={{ fontSize: "12.5px" }}>
+                    <thead>
+                      <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                        <th className="text-left px-2 py-1.5 w-8">STT</th>
+                        <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
+                        <th className="text-left px-2 py-1.5">N.sinh</th>
+                        <th className="text-left px-2 py-1.5">T.đội</th>
+                        <th className="text-left px-2 py-1.5 min-w-[170px]">Thẻ ra vào cổng</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRestMembers.map((m, i) => (
+                        <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                          <td className="px-2 py-1.5 f-mono">{i + 1}</td>
+                          <td className="px-2 py-1.5 font-medium">{m.name}</td>
+                          <td className="px-2 py-1.5 f-mono">{m.dob}</td>
+                          <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
+                          <td className="px-2 py-1.5">
+                            <TheTrangThaiBadge
+                              o={{ id: m.id, theTrangThai: (viewEntry.restStatus || {})[m.id] || "chua_nhan" }}
+                              canAct={perm.canManage || perm.isOwner(m.name)}
+                              canApprove={canApprove}
+                              setThe={setRestThe}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ============ TAB: ĐĂNG KÝ RA NGOÀI ============ */
 /* ============ TAB: ĐĂNG KÝ RA NGOÀI ============
    - Mỗi đăng ký lưu kèm createdAt (thời điểm tạo) để xếp STT theo đúng thứ tự đăng ký trước/sau (tính riêng theo từng ngày).
@@ -3688,6 +3869,7 @@ const TABS = [
   { id: "home", label: "Thông báo", icon: Shield },
   { id: "roster", label: "Quân số", icon: Users },
   { id: "study", label: "Lịch học", icon: CalendarDays },
+  { id: "restLeave", label: "Lịch nghỉ", icon: CalendarDays },
   { id: "duty", label: "Lịch trực", icon: MapPin },
   { id: "outing", label: "Đăng ký ra ngoài", icon: DoorOpen },
   { id: "attendance", label: "Điểm danh", icon: ClipboardCheck },
@@ -3766,6 +3948,7 @@ export default function App() {
       case "home": return <AnnouncementsTab user={user} perm={perm} />;
       case "roster": return <RosterTab perm={perm} user={user} />;
       case "study": return <StudyScheduleTab user={user} perm={perm} />;
+      case "restLeave": return <WeekendOffTab user={user} perm={perm} />;
       case "duty": return <DutyScheduleTab user={user} perm={perm} />;
       case "outing": return <OutingTab user={user} perm={perm} />;
       case "attendance": return <AttendanceTab user={user} perm={perm} />;
