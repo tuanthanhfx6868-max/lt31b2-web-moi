@@ -929,6 +929,12 @@ function formatDob(dob) {
   const [y, m, d] = parts;
   return `${d}/${m}/${y}`;
 }
+// Lấy Năm sinh (yyyy) từ dob dạng yyyy-mm-dd trong Quân số, dùng khi đưa người vào Danh sách trực.
+function yearFromDob(dob) {
+  if (!dob) return "";
+  const parts = String(dob).split("-");
+  return parts.length === 3 ? parts[0] : String(dob);
+}
 
 const ROSTER_ROLE_OPTIONS = [
   "Trung đội trưởng", "Trung đội phó",
@@ -1884,6 +1890,7 @@ function DutyScheduleTab({ user, perm }) {
 */
 function WeekendRestAppendix({ user, perm }) {
   const { items, setItems, loading } = useSharedList("weekendRest");
+  const { items: rosterItems } = useSharedList("roster");
   const [form, setForm] = useState({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
@@ -1940,7 +1947,7 @@ function WeekendRestAppendix({ user, perm }) {
   return (
     <div>
       <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực cuối tuần — thời gian nghỉ"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt nghỉ</Btn>} />
+        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt trực</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
@@ -1964,7 +1971,7 @@ function WeekendRestAppendix({ user, perm }) {
               <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
             </Field>
           </div>
-          <div className="md:col-span-2"><Btn onClick={create}>Tạo đợt nghỉ</Btn></div>
+          <div className="md:col-span-2"><Btn onClick={create}>Tạo đợt trực</Btn></div>
         </div>
       )}
 
@@ -1981,7 +1988,7 @@ function WeekendRestAppendix({ user, perm }) {
           </div>
 
           {viewEntry && (
-            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} />
+            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} rosterItems={rosterItems} />
           )}
         </>
       )}
@@ -1989,8 +1996,7 @@ function WeekendRestAppendix({ user, perm }) {
   );
 }
 
-function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry }) {
-  const [mForm, setMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry, rosterItems }) {
   const [showMForm, setShowMForm] = useState(false);
   const [mWarn, setMWarn] = useState("");
   const [approvalUrlInput, setApprovalUrlInput] = useState(entry.approvalUrl || "");
@@ -1998,29 +2004,45 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
 
   useEffect(() => { setApprovalUrlInput(entry.approvalUrl || ""); }, [entry.id, entry.approvalUrl]);
 
-  const addMember = async () => {
-    if (!mForm.hoTen.trim() || !mForm.namSinh.trim()) {
-      setMWarn("Vui lòng nhập đủ Họ và tên, Năm sinh trước khi lưu.");
+  // Thêm người vào Danh sách trực: tick chọn (nhiều) người có sẵn trong Quân số — không nhập tay.
+  // Thông tin Họ và tên / Năm sinh / Tiểu đội / SĐT được lấy tự động từ Quân số.
+  const [selectedRosterIds, setSelectedRosterIds] = useState([]);
+  const existingNames = new Set((entry.members || []).map((m) => normalizeName(m.hoTen)));
+  const availableRoster = [...(rosterItems || [])]
+    .filter((r) => !existingNames.has(normalizeName(r.name)))
+    .sort((a, b) => Number(a.tieuDoi || 1) - Number(b.tieuDoi || 1) || String(a.name).localeCompare(String(b.name), "vi"));
+  const toggleRosterSelect = (id) => setSelectedRosterIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const addSelectedMembers = async () => {
+    if (selectedRosterIds.length === 0) {
+      setMWarn("Vui lòng tick chọn ít nhất một người từ Quân số trước khi thêm vào danh sách trực.");
       return;
     }
     setMWarn("");
-    const member = { id: Date.now(), ...mForm };
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: [...(e.members || []), member] } : e));
+    const chosen = (rosterItems || []).filter((r) => selectedRosterIds.includes(r.id));
+    const newMembers = chosen.map((r, idx) => ({
+      id: Date.now() + idx,
+      hoTen: r.name || "",
+      namSinh: yearFromDob(r.dob),
+      tieuDoi: r.tieuDoi || "1",
+      phone: r.phone || "",
+    }));
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: [...(e.members || []), ...newMembers] } : e));
     await setEntries(next);
-    setMForm({ hoTen: "", namSinh: "", tieuDoi: "1" });
+    setSelectedRosterIds([]);
     setShowMForm(false);
   };
   const removeMember = async (mid) => {
     const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).filter((m) => m.id !== mid) } : e));
     await setEntries(next);
   };
-  // Sửa thông tin thành viên khi chỉ huy phát hiện sai sót (họ tên/năm sinh/tiểu đội)
+  // Sửa thông tin thành viên khi chỉ huy phát hiện sai sót (họ tên/năm sinh/tiểu đội/SĐT)
   const [editingMemberId, setEditingMemberId] = useState(null);
-  const [editMForm, setEditMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+  const [editMForm, setEditMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1", phone: "" });
   const [editMWarn, setEditMWarn] = useState("");
   const startEditMember = (m) => {
     setEditingMemberId(m.id);
-    setEditMForm({ hoTen: m.hoTen || "", namSinh: m.namSinh || "", tieuDoi: m.tieuDoi || "1" });
+    setEditMForm({ hoTen: m.hoTen || "", namSinh: m.namSinh || "", tieuDoi: m.tieuDoi || "1", phone: m.phone || "" });
     setEditMWarn("");
   };
   const cancelEditMember = () => { setEditingMemberId(null); setEditMWarn(""); };
@@ -2034,11 +2056,6 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     await setEntries(next);
     setEditingMemberId(null);
   };
-  // Trạng thái thẻ ra vào cổng cho từng người trong danh sách nghỉ cuối tuần (dùng chung logic với tab Ra ngoài)
-  const setMemberThe = async (mid, trangThai) => {
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).map((m) => (m.id === mid ? { ...m, theTrangThai: trangThai } : m)) } : e));
-    await setEntries(next);
-  };
   // File ký duyệt của lãnh đạo cho riêng tuần/đợt nghỉ này
   const saveApproval = async (url) => {
     setApprovalUrlInput(url);
@@ -2050,8 +2067,6 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" } : e));
     await setEntries(next);
   };
-  const canApprove = perm.isAdmin || perm.isCommandRole;
-
   const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const toggleSelectMember = (id) => setSelectedMemberId((s) => (s === id ? null : id));
@@ -2094,21 +2109,32 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
       </div>
 
       {perm.canManage && showMForm && (
-        <div className="mt-3 p-3 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
-          <div className="md:col-span-3"><FormWarning message={mWarn} /></div>
-          <Field label="Họ và tên" required>
-            <input className={inputCls} style={inputStyle} value={mForm.hoTen} onChange={(e) => setMForm({ ...mForm, hoTen: e.target.value })} placeholder="VD: Nguyễn Văn A" />
-          </Field>
-          <Field label="Năm sinh" required>
-            <input className={inputCls} style={inputStyle} value={mForm.namSinh} onChange={(e) => setMForm({ ...mForm, namSinh: e.target.value })} placeholder="VD: 2004" />
-          </Field>
-          <Field label="Tiểu đội" required>
-            <select className={inputCls} style={inputStyle} value={mForm.tieuDoi} onChange={(e) => setMForm({ ...mForm, tieuDoi: e.target.value })}>
-              <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
-              <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
-            </select>
-          </Field>
-          <div className="md:col-span-3"><Btn onClick={addMember}>Thêm vào danh sách</Btn></div>
+        <div className="mt-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+          <FormWarning message={mWarn} />
+          <div className="f-body text-[11px] italic mb-2" style={{ color: T.inkSoft }}>
+            Tick chọn một hoặc nhiều người từ Quân số để đưa vào Danh sách trực — Họ và tên, Năm sinh, Tiểu đội, SĐT sẽ tự động lấy theo Quân số.
+          </div>
+          {availableRoster.length === 0 ? (
+            <div className="f-body text-xs italic py-2 text-center" style={{ color: T.inkSoft }}>
+              Tất cả quân nhân trong Quân số đã có trong danh sách trực đợt này.
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+              {availableRoster.map((r) => (
+                <label key={r.id} className="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
+                  <input type="checkbox" checked={selectedRosterIds.includes(r.id)} onChange={() => toggleRosterSelect(r.id)} />
+                  <span className="f-body text-xs font-medium" style={{ color: T.ink }}>{r.name}</span>
+                  <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
+                    · TĐ{r.tieuDoi || "—"} · {r.phone || "chưa có SĐT"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2 mt-3">
+            <Btn onClick={addSelectedMembers}>Xác nhận, thêm vào danh sách trực ({selectedRosterIds.length})</Btn>
+            <Btn variant="outline" onClick={() => { setShowMForm(false); setSelectedRosterIds([]); setMWarn(""); }}>Huỷ</Btn>
+          </div>
         </div>
       )}
 
@@ -2159,7 +2185,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                 <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
                 <th className="text-left px-2 py-1.5">N.sinh</th>
                 <th className="text-left px-2 py-1.5">T.đội</th>
-                <th className="text-left px-2 py-1.5 min-w-[170px]">Thẻ ra vào cổng</th>
+                <th className="text-left px-2 py-1.5 min-w-[120px]">SĐT</th>
                 <th className="px-2 py-1.5 w-14"></th>
               </tr>
             </thead>
@@ -2170,13 +2196,14 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                     <td className="px-2 py-1.5 f-mono">{i + 1}</td>
                     <td colSpan={5} className="px-2 py-2.5">
                       <FormWarning message={editMWarn} />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                         <input className={inputCls} style={inputStyle} value={editMForm.hoTen} onChange={(e) => setEditMForm({ ...editMForm, hoTen: e.target.value })} placeholder="Họ và tên" />
                         <input className={inputCls} style={inputStyle} value={editMForm.namSinh} onChange={(e) => setEditMForm({ ...editMForm, namSinh: e.target.value })} placeholder="Năm sinh" />
                         <select className={inputCls} style={inputStyle} value={editMForm.tieuDoi} onChange={(e) => setEditMForm({ ...editMForm, tieuDoi: e.target.value })}>
                           <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
                           <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
                         </select>
+                        <input className={inputCls} style={inputStyle} value={editMForm.phone} onChange={(e) => setEditMForm({ ...editMForm, phone: e.target.value })} placeholder="SĐT" />
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <Btn onClick={saveEditMember}>Lưu</Btn>
@@ -2190,9 +2217,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                     <td className="px-2 py-1.5 font-medium">{m.hoTen}</td>
                     <td className="px-2 py-1.5 f-mono">{m.namSinh}</td>
                     <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
-                    <td className="px-2 py-1.5">
-                      <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
-                    </td>
+                    <td className="px-2 py-1.5 f-mono">{m.phone || "—"}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center justify-end gap-2">
                         {perm.canManage && (
