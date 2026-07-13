@@ -411,9 +411,26 @@ const itemCreatedAt = (o) => new Date(o?.createdAt || o?.id || 0).getTime();
 // Đếm số mục được tạo SAU thời điểm "đã xem" (sinceTs) — dùng để hiển thị số thông báo mới
 const countNewSince = (items, sinceTs) => (items || []).filter((it) => itemCreatedAt(it) > (sinceTs || 0)).length;
 
+// Lấy ngày hôm nay (yyyy-mm-dd) và TỰ CẬP NHẬT khi đồng hồ sang ngày mới, kể cả khi người dùng
+// mở tab trình duyệt xuyên đêm không tắt / không tải lại trang. Nếu chỉ tính "today" một lần lúc
+// mount (như cách làm cũ), các màn hình mở từ tối hôm trước sẽ bị kẹt mãi ở ngày cũ.
+function useLiveToday() {
+  const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    const id = setInterval(() => {
+      const t = new Date().toISOString().slice(0, 10);
+      setToday((prev) => (prev === t ? prev : t));
+    }, 30 * 1000); // kiểm tra mỗi 30 giây — đủ nhanh để nhận ngày mới, không tốn tài nguyên
+    return () => clearInterval(id);
+  }, []);
+  return today;
+}
+
 // Cấu hình khoá đăng ký ra ngoài: khoá thủ công (manualLock) và/hoặc khoá tự động đến 1 thời điểm (lockAt, chuỗi datetime-local)
+// lockSetOn (yyyy-mm-dd): ngày mà khoá thủ công được BẬT — dùng để tự động coi như đã mở khoá khi sang ngày mới,
+// tránh việc khoá thủ công "quên" không mở sẽ chặn đăng ký mãi mãi những ngày sau đó.
 function useOutingLock() {
-  const [config, setConfigState] = useState({ manualLock: false, lockAt: "" });
+  const [config, setConfigState] = useState({ manualLock: false, lockAt: "", lockSetOn: "" });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -424,7 +441,11 @@ function useOutingLock() {
         if (snap.exists() && snap.data().value) {
           try {
             const parsed = JSON.parse(snap.data().value);
-            setConfigState({ manualLock: Boolean(parsed.manualLock), lockAt: parsed.lockAt || "" });
+            setConfigState({
+              manualLock: Boolean(parsed.manualLock),
+              lockAt: parsed.lockAt || "",
+              lockSetOn: parsed.lockSetOn || "",
+            });
           } catch (e) {
             // giữ mặc định nếu dữ liệu lỗi
           }
@@ -437,12 +458,17 @@ function useOutingLock() {
   }, []);
 
   const update = async (next) => {
+    // Lưu lại trạng thái cũ để hoàn tác nếu lưu Firestore thất bại — tránh trường hợp người bấm khoá
+    // thấy giao diện của MÌNH báo "đã khoá" trong khi dữ liệu chưa thực sự lưu được, khiến người khác
+    // vẫn đăng ký được bình thường mà chỉ huy tưởng đã khoá.
+    const prev = config;
     setConfigState(next);
     try {
       await setDoc(doc(db, "lt31b2", "outingLock"), { value: JSON.stringify(next) });
       return true;
     } catch (e) {
-      const msg = `Cập nhật khoá đăng ký thất bại — ${e?.code || ""} ${e?.message || e}`;
+      setConfigState(prev);
+      const msg = `Cập nhật khoá đăng ký thất bại — ${e?.code || ""} ${e?.message || e}. Khoá CHƯA được lưu, vui lòng thử lại.`;
       reportGlobalError(msg);
       return false;
     }
@@ -2258,8 +2284,18 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
   const lock = useOutingLock();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = useLiveToday();
   const [viewDate, setViewDate] = useState(today);
+  // Nếu người dùng đang xem đúng "hôm nay" (chưa tự tay chọn ngày khác) mà đồng hồ vừa sang ngày mới,
+  // tự động đưa viewDate theo ngày mới — tránh trường hợp mở app/tab qua đêm không tắt, danh sách
+  // "Chờ duyệt" bị kẹt hiện mãi đăng ký của ngày cũ. Nếu người dùng đang cố ý xem 1 ngày cũ khác thì
+  // không tự động kéo họ về hôm nay (vẫn có nút "Về hôm nay" để chủ động quay lại).
+  const prevTodayRef = useRef(today);
+  useEffect(() => {
+    if (viewDate === prevTodayRef.current) setViewDate(today);
+    prevTodayRef.current = today;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today]);
   const approvalPhoto = useOutingApprovalPhoto(viewDate);
   const [form, setForm] = useState({ name: "", namSinh: "", tieuDoi: "1", lyDo: "", ngay: today, gioDi: "", gioVeDuKien: "" });
   const [showForm, setShowForm] = useState(false);
@@ -2275,15 +2311,27 @@ function OutingTab({ user, perm }) {
   const canApprove = perm.isAdmin || perm.isCommandRole;
 
   const nowTs = new Date();
-  const scheduledLocked = Boolean(lock.config.lockAt) && nowTs >= new Date(lock.config.lockAt);
-  const isLocked = Boolean(lock.config.manualLock) || scheduledLocked;
-  const lockMessage = lock.config.manualLock
+  // Khoá hẹn giờ chỉ còn hiệu lực nếu thời điểm hẹn (lockAt) rơi đúng NGÀY HÔM NAY và đã tới giờ —
+  // qua ngày mới, dù nowTs vẫn "sau" lockAt về mặt số học, khoá này tự coi như hết hạn (mở lại).
+  const scheduledDateStr = lock.config.lockAt ? lock.config.lockAt.slice(0, 10) : "";
+  const scheduledLocked = Boolean(lock.config.lockAt) && scheduledDateStr === today && nowTs >= new Date(lock.config.lockAt);
+  // Khoá thủ công chỉ còn hiệu lực nếu được BẬT đúng vào hôm nay (lockSetOn === today) —
+  // qua ngày mới mà chỉ huy quên mở, hệ thống tự coi như đã mở, không cần ai bấm tay.
+  const manualLockActive = Boolean(lock.config.manualLock) && lock.config.lockSetOn === today;
+  const isLocked = manualLockActive || scheduledLocked;
+  const lockMessage = manualLockActive
     ? "Đăng ký ra ngoài đang bị khoá thủ công. Vui lòng liên hệ chỉ huy."
     : scheduledLocked
     ? `Đã hết thời gian đăng ký (khoá tự động lúc ${new Date(lock.config.lockAt).toLocaleString("vi-VN")}).`
     : "";
 
-  const toggleManualLock = async () => { await lock.setConfig({ ...lock.config, manualLock: !lock.config.manualLock }); };
+  const toggleManualLock = async () => {
+    // Dùng trạng thái HIỆU LỰC (đã tính theo ngày) để quyết định bật/tắt, không dùng thẳng cờ thô
+    // lock.config.manualLock — vì cờ đó có thể vẫn là "true" cũ từ hôm trước dù đã tự hết hiệu lực,
+    // nếu dùng thẳng sẽ khiến bấm "Khoá ngay" lại vô tình ghi đè thành mở khoá.
+    const turningOn = !manualLockActive;
+    await lock.setConfig({ ...lock.config, manualLock: turningOn, lockSetOn: turningOn ? today : lock.config.lockSetOn });
+  };
   const saveScheduledLock = async () => { await lock.setConfig({ ...lock.config, lockAt: lockAtInput }); };
   const clearScheduledLock = async () => { setLockAtInput(""); await lock.setConfig({ ...lock.config, lockAt: "" }); };
 
@@ -2463,8 +2511,8 @@ function OutingTab({ user, perm }) {
         <div className="stamp-border p-2.5 mb-3" style={{ background: "#FBF3DD" }}>
           <div className="f-display text-[9px] uppercase tracking-widest mb-1.5" style={{ color: T.amberDark }}>Khoá đăng ký ra ngoài</div>
           <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-            <Btn variant={lock.config.manualLock ? "danger" : "outline"} onClick={toggleManualLock}>
-              {lock.config.manualLock ? "Đang khoá thủ công — bấm để mở khoá" : "Khoá đăng ký ngay (thủ công)"}
+            <Btn variant={manualLockActive ? "danger" : "outline"} onClick={toggleManualLock}>
+              {manualLockActive ? "Đang khoá thủ công — bấm để mở khoá" : "Khoá đăng ký ngay (thủ công)"}
             </Btn>
           </div>
           <div className="flex flex-wrap items-end gap-1.5">
