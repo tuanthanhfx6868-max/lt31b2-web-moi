@@ -3829,19 +3829,26 @@ export default function App() {
               </div>
             ) : (
               (advisorInfo.name || advisorInfo.phone || canEditAdvisor) && (
-                <div className="f-mono text-[10px] flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(237,230,214,0.75)" }}>
+                <div className="f-mono text-[10px] mt-0.5" style={{ color: "rgba(237,230,214,0.75)" }}>
                   {advisorInfo.name || advisorInfo.phone ? (
-                    <span>
-                      Chủ nhiệm trung đội: {advisorInfo.name || "—"}
-                      {advisorInfo.phone && <> · {advisorInfo.phone}</>}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>CHỦ NHIỆM TĐ: {advisorInfo.name || "—"}</span>
+                      {canEditAdvisor && (
+                        <button onClick={startEditAdvisor} title="Sửa thông tin chủ nhiệm trung đội">
+                          <Pencil size={10} style={{ color: T.amber }} />
+                        </button>
+                      )}
+                      <span className="basis-full">SỐ ĐT: {advisorInfo.phone || "—"}</span>
+                    </div>
                   ) : (
-                    <span className="italic">Chưa có thông tin chủ nhiệm trung đội</span>
-                  )}
-                  {canEditAdvisor && (
-                    <button onClick={startEditAdvisor} title="Sửa thông tin chủ nhiệm trung đội">
-                      <Pencil size={10} style={{ color: T.amber }} />
-                    </button>
+                    <span className="flex items-center gap-1.5">
+                      <span className="italic">Chưa có thông tin chủ nhiệm trung đội</span>
+                      {canEditAdvisor && (
+                        <button onClick={startEditAdvisor} title="Sửa thông tin chủ nhiệm trung đội">
+                          <Pencil size={10} style={{ color: T.amber }} />
+                        </button>
+                      )}
+                    </span>
                   )}
                 </div>
               )
