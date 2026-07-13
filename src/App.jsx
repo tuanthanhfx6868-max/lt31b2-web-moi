@@ -3703,6 +3703,10 @@ export default function App() {
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [tab, setTab] = useState("home");
   const [navOpen, setNavOpen] = useState(false);
+  // Tên + SĐT chủ nhiệm trung đội, hiện dưới tên trung đội ở thanh đầu trang — chỉ huy nhập/sửa được.
+  const { value: advisorInfo, setValue: setAdvisorInfo } = useSingleDoc("advisorInfo", { name: "", phone: "" });
+  const [editingAdvisor, setEditingAdvisor] = useState(false);
+  const [advisorForm, setAdvisorForm] = useState({ name: "", phone: "" });
 
   const { perm, permissions, setPermissions, permLoading } = useRole(user, isAdminLogin);
 
@@ -3744,6 +3748,18 @@ export default function App() {
   if (!user) return <LoginGate onLogin={(name, admin) => { setUser(name); setIsAdminLogin(!!admin); }} />;
 
   const roleBadge = { admin: "Quản trị", can_bo: "Cán bộ", thanh_vien: "Thành viên" };
+
+  // Chỉ Quản trị / Cán bộ / Trung đội trưởng-phó (perm.canManage) được sửa tên + SĐT chủ nhiệm trung đội.
+  const canEditAdvisor = perm.canManage;
+  const startEditAdvisor = () => {
+    setAdvisorForm({ name: advisorInfo.name || "", phone: advisorInfo.phone || "" });
+    setEditingAdvisor(true);
+  };
+  const cancelEditAdvisor = () => setEditingAdvisor(false);
+  const saveAdvisor = async () => {
+    await setAdvisorInfo({ name: advisorForm.name.trim(), phone: advisorForm.phone.trim() });
+    setEditingAdvisor(false);
+  };
 
   const renderTab = () => {
     switch (tab) {
@@ -3792,6 +3808,44 @@ export default function App() {
           <div>
             <div className="f-mono text-[9.5px] tracking-[0.2em] uppercase" style={{ color: T.amber }}>Đại học Cảnh sát nhân dân</div>
             <div className="f-display text-sm md:text-base font-semibold tracking-wide" style={{ color: T.paper }}>TRUNG ĐỘI B2 CSGT LT31</div>
+            {editingAdvisor ? (
+              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                <input
+                  className="f-body text-[10.5px] px-1.5 py-0.5 rounded-sm w-28 input-plain"
+                  style={{ background: "rgba(255,255,255,0.92)", color: T.ink, border: "none" }}
+                  placeholder="Tên chủ nhiệm"
+                  value={advisorForm.name}
+                  onChange={(e) => setAdvisorForm({ ...advisorForm, name: e.target.value })}
+                />
+                <input
+                  className="f-mono text-[10.5px] px-1.5 py-0.5 rounded-sm w-24 input-plain"
+                  style={{ background: "rgba(255,255,255,0.92)", color: T.ink, border: "none" }}
+                  placeholder="Số điện thoại"
+                  value={advisorForm.phone}
+                  onChange={(e) => setAdvisorForm({ ...advisorForm, phone: e.target.value })}
+                />
+                <button onClick={saveAdvisor} title="Lưu"><CheckCircle2 size={15} style={{ color: T.amber }} /></button>
+                <button onClick={cancelEditAdvisor} title="Huỷ"><X size={15} style={{ color: T.paper }} /></button>
+              </div>
+            ) : (
+              (advisorInfo.name || advisorInfo.phone || canEditAdvisor) && (
+                <div className="f-mono text-[10px] flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(237,230,214,0.75)" }}>
+                  {advisorInfo.name || advisorInfo.phone ? (
+                    <span>
+                      Chủ nhiệm trung đội: {advisorInfo.name || "—"}
+                      {advisorInfo.phone && <> · {advisorInfo.phone}</>}
+                    </span>
+                  ) : (
+                    <span className="italic">Chưa có thông tin chủ nhiệm trung đội</span>
+                  )}
+                  {canEditAdvisor && (
+                    <button onClick={startEditAdvisor} title="Sửa thông tin chủ nhiệm trung đội">
+                      <Pencil size={10} style={{ color: T.amber }} />
+                    </button>
+                  )}
+                </div>
+              )
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 md:gap-4">
