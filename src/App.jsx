@@ -96,6 +96,11 @@ const FONT_STYLE = `
 .table-lines th, .table-lines td { border-bottom: 1px solid #E2D9C4; }
 .table-lines thead tr { border-bottom: 2px solid #C9A227; }
 .table-lines tbody tr:last-child td { border-bottom: none; }
+/* Kẻ bảng đầy đủ (cả dòng lẫn cột) — dùng cho Danh sách trực */
+.table-grid th, .table-grid td { border-right: 1px solid #E2D9C4; }
+.table-grid th:last-child, .table-grid td:last-child { border-right: none; }
+.table-grid thead th { border-right: 1px solid rgba(237,230,214,0.35); }
+.table-grid thead th:last-child { border-right: none; }
 .nav-item:hover:not(.nav-item-active) { background: rgba(255,255,255,0.06) !important; }
 .icon-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1881,11 +1886,11 @@ function DutyScheduleTab({ user, perm }) {
   );
 }
 
-/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian nghỉ, danh sách theo tiểu đội) ============
-   - Mỗi đợt có khoảng thời gian nghỉ riêng (từ ngày/giờ → đến ngày/giờ).
-   - Khi ngày hiện tại đã qua khỏi "Ngày kết thúc nghỉ" của đợt đang xem, hệ thống tự động chuyển
+/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian trực, danh sách theo tiểu đội) ============
+   - Mỗi đợt có khoảng thời gian trực riêng (từ ngày/giờ → đến ngày/giờ).
+   - Khi ngày hiện tại đã qua khỏi "Ngày kết thúc trực" của đợt đang xem, hệ thống tự động chuyển
      sang đợt hiện hành/kế tiếp (giống cơ chế "qua 0h ngày mới" của tab Đăng ký ra ngoài).
-   - Các đợt trước đó KHÔNG bị xoá — vẫn chọn lại được trong ô "Xem đợt nghỉ" để quản lý học viên
+   - Các đợt trước đó KHÔNG bị xoá — vẫn chọn lại được trong ô "Xem đợt trực" để quản lý học viên
      (giống hệt cách "Xem theo ngày" ở tab Đăng ký ra ngoài).
 */
 function WeekendRestAppendix({ user, perm }) {
@@ -1927,7 +1932,7 @@ function WeekendRestAppendix({ user, perm }) {
   }, [currentId, items]);
 
   const create = async () => {
-    if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu nghỉ và Ngày kết thúc nghỉ trước khi lưu."); return; }
+    if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu trực và Ngày kết thúc trực trước khi lưu."); return; }
     setWarn("");
     const newEntry = { id: Date.now(), ...form, by: user, members: [], approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" };
     await setItems([newEntry, ...items]);
@@ -1946,22 +1951,22 @@ function WeekendRestAppendix({ user, perm }) {
 
   return (
     <div>
-      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực cuối tuần — thời gian nghỉ"
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực Cuối Tuần — Thời Gian Trực"
         action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt trực</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <Field label="Ngày bắt đầu nghỉ" required>
+          <Field label="Ngày bắt đầu trực" required>
             <input type="date" className={inputCls} style={inputStyle} value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} />
           </Field>
-          <Field label="Giờ bắt đầu nghỉ (mặc định 17:00, có thể đổi)">
+          <Field label="Giờ bắt đầu trực (mặc định 17:00, có thể đổi)">
             <input type="time" className={inputCls} style={inputStyle} value={form.fromTime} onChange={(e) => setForm({ ...form, fromTime: e.target.value })} />
           </Field>
-          <Field label="Ngày kết thúc nghỉ" required>
+          <Field label="Ngày kết thúc trực" required>
             <input type="date" className={inputCls} style={inputStyle} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} />
           </Field>
-          <Field label="Giờ kết thúc nghỉ (mặc định 21:00, có thể đổi)">
+          <Field label="Giờ kết thúc trực (mặc định 21:00, có thể đổi)">
             <input type="time" className={inputCls} style={inputStyle} value={form.toTime} onChange={(e) => setForm({ ...form, toTime: e.target.value })} />
           </Field>
           <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.ghiChu} onChange={(e) => setForm({ ...form, ghiChu: e.target.value })} /></Field></div>
@@ -1975,10 +1980,10 @@ function WeekendRestAppendix({ user, perm }) {
         </div>
       )}
 
-      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đợt nghỉ cuối tuần nào." /> : (
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đợt trực cuối tuần nào." /> : (
         <>
           <div className="mb-4 max-w-md">
-            <Field label="Xem đợt nghỉ (chọn lại đợt trước để xem/quản lý học viên)">
+            <Field label="Xem đợt trực (chọn lại đợt trước để xem/quản lý học viên)">
               <select className={inputCls} style={inputStyle} value={viewEntryId || ""} onChange={(e) => setViewEntryId(Number(e.target.value))}>
                 {sortedEntries.map((e) => (
                   <option key={e.id} value={e.id}>{entryLabel(e)}</option>
@@ -2056,7 +2061,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     await setEntries(next);
     setEditingMemberId(null);
   };
-  // File ký duyệt của lãnh đạo cho riêng tuần/đợt nghỉ này
+  // File ký duyệt của lãnh đạo cho riêng tuần/đợt trực này
   const saveApproval = async (url) => {
     setApprovalUrlInput(url);
     const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: url, approvalUploadedBy: user, approvalUploadedAt: new Date().toISOString() } : e));
@@ -2077,7 +2082,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         <div>
           <div className="f-display font-semibold text-sm flex items-center gap-2" style={{ color: T.green }}>
             <CalendarDays size={15} />
-            Nghỉ từ {entry.fromTime || "17:00"} ngày {entry.fromDate ? new Date(entry.fromDate).toLocaleDateString("vi-VN") : "—"}
+            Trực từ {entry.fromTime || "17:00"} ngày {entry.fromDate ? new Date(entry.fromDate).toLocaleDateString("vi-VN") : "—"}
             {" → "}
             {entry.toTime || "21:00"} ngày {entry.toDate ? new Date(entry.toDate).toLocaleDateString("vi-VN") : "—"}
           </div>
@@ -2095,7 +2100,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
           )}
         </div>
         {perm.canManage && (
-          <button onClick={() => onRemoveEntry(entry.id)} title="Xoá đợt nghỉ"><Trash2 size={15} style={{ color: T.red }} /></button>
+          <button onClick={() => onRemoveEntry(entry.id)} title="Xoá đợt trực"><Trash2 size={15} style={{ color: T.red }} /></button>
         )}
       </div>
 
@@ -2125,7 +2130,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                   <input type="checkbox" checked={selectedRosterIds.includes(r.id)} onChange={() => toggleRosterSelect(r.id)} />
                   <span className="f-body text-xs font-medium" style={{ color: T.ink }}>{r.name}</span>
                   <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
-                    · TĐ{r.tieuDoi || "—"} · {r.phone || "chưa có SĐT"}
+                    · TĐ{r.tieuDoi || "—"}
                   </span>
                 </label>
               ))}
@@ -2175,16 +2180,16 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
       </div>
 
       {sortedMembers.length === 0 ? (
-        <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
+        <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách trực đợt này.</div>
       ) : (
         <div className="overflow-x-auto mt-3">
-          <table className="w-full text-sm f-body table-lines" style={{ fontSize: "12.5px" }}>
+          <table className="w-full text-sm f-body table-lines table-grid" style={{ fontSize: "12.5px" }}>
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-2 py-1.5 w-8">STT</th>
                 <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
-                <th className="text-left px-2 py-1.5">N.sinh</th>
-                <th className="text-left px-2 py-1.5">T.đội</th>
+                <th className="text-left px-2 py-1.5">Năm sinh</th>
+                <th className="text-left px-2 py-1.5">Tiểu đội</th>
                 <th className="text-left px-2 py-1.5 min-w-[120px]">SĐT</th>
                 <th className="px-2 py-1.5 w-14"></th>
               </tr>
