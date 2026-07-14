@@ -3915,15 +3915,10 @@ function FundTab({ user, perm }) {
                     STK: {fundConfig.bankAccount}{fundConfig.bankName ? ` · ${fundConfig.bankName}` : ""}
                   </div>
                 )}
-                {fundConfig.qrUrl && (
-                  <a href={fundConfig.qrUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline inline-flex items-center gap-1 mt-1.5" style={{ color: T.green }}>
-                    <Paperclip size={12} /> Xem mã QR
-                  </a>
-                )}
               </div>
               {fundConfig.qrUrl && (
                 <a href={fundConfig.qrUrl} target="_blank" rel="noreferrer" className="shrink-0">
-                  <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-14 h-14 object-cover stamp-border" style={{ background: "#fff" }} />
+                  <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-24 h-24 object-cover stamp-border" style={{ background: "#fff" }} />
                 </a>
               )}
             </div>
