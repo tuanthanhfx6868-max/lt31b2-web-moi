@@ -46,7 +46,7 @@ const normalizeName = (n) => (n || "").trim().toLowerCase();
 // Dùng chung cho việc phân quyền (useRole) và việc xác thực mật khẩu riêng khi đăng nhập (LoginGate).
 function isCommandRoleForName(name, rosterItems) {
   const rosterMatch = (rosterItems || []).find((m) => normalizeName(m.name) === normalizeName(name));
-  return Boolean(rosterMatch && (rosterMatch.role === "Trung đội trưởng" || rosterMatch.role === "Trung đội phó"));
+  return Boolean(rosterMatch && (hasRole(rosterMatch.role, "Trung đội trưởng") || hasRole(rosterMatch.role, "Trung đội phó")));
 }
 
 // Kiểm tra một cái tên có phải Trung đội trưởng/phó HOẶC Tiểu đội trưởng/phó hay không —
@@ -54,7 +54,7 @@ function isCommandRoleForName(name, rosterItems) {
 function isSquadCommandRoleForName(name, rosterItems) {
   const rosterMatch = (rosterItems || []).find((m) => normalizeName(m.name) === normalizeName(name));
   const COMMAND_CHAT_ROLES = ["Trung đội trưởng", "Trung đội phó", "Tiểu đội trưởng", "Tiểu đội phó"];
-  return Boolean(rosterMatch && COMMAND_CHAT_ROLES.includes(rosterMatch.role));
+  return Boolean(rosterMatch && COMMAND_CHAT_ROLES.some((r) => hasRole(rosterMatch.role, r)));
 }
 
 const FONT_STYLE = `
@@ -96,6 +96,11 @@ const FONT_STYLE = `
 .table-lines th, .table-lines td { border-bottom: 1px solid #E2D9C4; }
 .table-lines thead tr { border-bottom: 2px solid #C9A227; }
 .table-lines tbody tr:last-child td { border-bottom: none; }
+/* Kẻ bảng đầy đủ (cả dòng lẫn cột) — dùng cho Danh sách trực */
+.table-grid th, .table-grid td { border-right: 1px solid #E2D9C4; }
+.table-grid th:last-child, .table-grid td:last-child { border-right: none; }
+.table-grid thead th { border-right: 1px solid rgba(237,230,214,0.35); }
+.table-grid thead th:last-child { border-right: none; }
 .nav-item:hover:not(.nav-item-active) { background: rgba(255,255,255,0.06) !important; }
 .icon-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -616,88 +621,6 @@ function LoadingRow() {
   return <div className="flex items-center gap-2 f-body text-sm py-6" style={{ color: T.inkSoft }}><Loader2 size={16} className="animate-spin" /> Đang tải dữ liệu…</div>;
 }
 
-/* ============ CHỌN TÊN TỪ QUÂN SỐ (dropdown tự cuộn khi quá 6 dòng) ============ */
-function RosterNamePicker({ value, onChange, rosterItems, placeholder = "— Chọn tên trong Quân số —" }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const wrapRef = useRef(null);
-  const ROW_HEIGHT = 38;
-  const MAX_VISIBLE_ROWS = 6;
-
-  useEffect(() => {
-    const onClickOutside = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) { setOpen(false); setSearch(""); }
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  const sorted = [...(rosterItems || [])].sort((a, b) => Number(a.tieuDoi || 0) - Number(b.tieuDoi || 0));
-  const filtered = search.trim()
-    ? sorted.filter((m) => normalizeName(m.name).includes(normalizeName(search)))
-    : sorted;
-
-  return (
-    <div className="relative" ref={wrapRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((s) => !s)}
-        className={`${inputCls} flex items-center justify-between text-left`}
-        style={inputStyle}
-      >
-        <span style={{ color: value ? T.ink : T.inkSoft }}>{value || placeholder}</span>
-        <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
-      </button>
-
-      {open && (
-        <div
-          className="absolute left-0 right-0 z-40 mt-1"
-          style={{ background: "#fff", border: `1px solid #C9BFA5`, boxShadow: "0 6px 18px rgba(19,31,25,0.18)" }}
-        >
-          <div className="p-2" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
-            <div className="flex items-center gap-1.5 px-2 py-1.5" style={{ background: T.paper }}>
-              <Search size={13} style={{ color: T.inkSoft }} />
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm tên…"
-                className="f-body text-sm bg-transparent outline-none flex-1"
-              />
-            </div>
-          </div>
-
-          <div className="overflow-y-auto scrollbar-thin" style={{ maxHeight: ROW_HEIGHT * MAX_VISIBLE_ROWS }}>
-            <button
-              type="button"
-              onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
-              className="w-full text-left px-3 py-2 f-body text-sm block"
-              style={{ color: T.inkSoft, background: !value ? T.paper : "#fff" }}
-            >
-              {placeholder}
-            </button>
-            {filtered.length === 0 ? (
-              <div className="px-3 py-3 f-body text-xs italic text-center" style={{ color: T.inkSoft }}>Không tìm thấy tên phù hợp.</div>
-            ) : (
-              filtered.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => { onChange(m.name); setOpen(false); setSearch(""); }}
-                  className="w-full text-left px-3 py-2 f-body text-sm block"
-                  style={withSelect({ color: T.ink, background: "#fff" }, value === m.name)}
-                >
-                  {m.name} <span className="f-mono text-xs" style={{ color: T.inkSoft }}>(TĐ{m.tieuDoi})</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ============ THẢ TIM (dùng chung cho Thông báo & Bảng tin) ============ */
 function ReactionBar({ reactions = [], user, onToggle }) {
   const mine = reactions.includes(user);
@@ -1011,6 +934,12 @@ function formatDob(dob) {
   const [y, m, d] = parts;
   return `${d}/${m}/${y}`;
 }
+// Lấy Năm sinh (yyyy) từ dob dạng yyyy-mm-dd trong Quân số, dùng khi đưa người vào Danh sách trực.
+function yearFromDob(dob) {
+  if (!dob) return "";
+  const parts = String(dob).split("-");
+  return parts.length === 3 ? parts[0] : String(dob);
+}
 
 const ROSTER_ROLE_OPTIONS = [
   "Trung đội trưởng", "Trung đội phó",
@@ -1018,8 +947,59 @@ const ROSTER_ROLE_OPTIONS = [
   "Bí thư chi bộ", "Phó bí thư chi bộ",
   "Chi uỷ viên chi bộ", "Thư ký chi bộ",
   "Bí thư chi đoàn", "Phó bí thư chi đoàn",
-  "Uỷ viên chi đoàn", "Cán bộ",
+  "Uỷ viên chi đoàn", "Thành viên",
 ];
+// Chức vụ có thể gồm nhiều chức danh, lưu dạng chuỗi phân tách bởi dấu phẩy (VD: "Tiểu đội trưởng, Bí thư chi đoàn")
+function roleList(roleStr) {
+  return String(roleStr || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+function hasRole(roleStr, target) {
+  return roleList(roleStr).includes(target);
+}
+// Hiển thị thân thiện: chức danh mặc định "Cán bộ" (không giữ chức vụ riêng) hiển thị là "Thành viên"
+function roleDisplay(roleStr) {
+  const list = roleList(roleStr).map((r) => (r === "Cán bộ" ? "Thành viên" : r));
+  return list.length ? list.join(" · ") : "Thành viên";
+}
+// Ô chọn nhiều chức danh (tối đa `max`), dùng cho cả form Thêm và Sửa thành viên
+function RoleMultiSelect({ value, onChange, disabled, max = 3 }) {
+  const [open, setOpen] = useState(false);
+  const selected = roleList(value);
+  const toggle = (r) => {
+    if (disabled) return;
+    let next;
+    if (selected.includes(r)) next = selected.filter((x) => x !== r);
+    else { if (selected.length >= max) return; next = [...selected, r]; }
+    onChange(next.length ? next.join(", ") : "Thành viên");
+  };
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={inputCls}
+        style={{ ...inputStyle, textAlign: "left", cursor: disabled ? "not-allowed" : "pointer" }}
+      >
+        {selected.length ? roleDisplay(value) : "Chọn chức vụ..."}
+      </button>
+      {open && !disabled && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto stamp-border" style={{ background: "#fff" }}>
+          {ROSTER_ROLE_OPTIONS.map((r) => (
+            <label key={r} className="flex items-center gap-2 px-3 py-1.5 text-xs f-body cursor-pointer" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
+              <input type="checkbox" checked={selected.includes(r)} onChange={() => toggle(r)} disabled={!selected.includes(r) && selected.length >= max} />
+              {r}
+            </label>
+          ))}
+          <div className="px-3 py-1.5 f-mono text-[10px] flex items-center justify-between" style={{ color: T.inkSoft }}>
+            <span>Chọn tối đa {max} chức vụ</span>
+            <button type="button" className="underline" onClick={() => setOpen(false)}>Xong</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ============ TAB: QUÂN SỐ ============
    - Thêm/Xoá thành viên: Quản trị, Trung đội trưởng/phó, Cán bộ được gán quyền (perm.canManage).
@@ -1030,7 +1010,7 @@ const ROSTER_ROLE_OPTIONS = [
 */
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
-  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1071,8 +1051,8 @@ function RosterTab({ perm, user }) {
   const openForm = () => {
     setForm(
       canSelfAdd
-        ? { stt: "", msv: "", name: user, role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
-        : { stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
+        ? { stt: "", msv: "", name: user, role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
+        : { stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
     );
     setWarn("");
     setShowForm(true);
@@ -1084,11 +1064,15 @@ function RosterTab({ perm, user }) {
       !String(form.stt).trim() || !form.name.trim() || !form.role.trim() ||
       !form.tieuDoi.trim() || !form.phone.trim() || !form.dob.trim();
     if (missing) { setWarn("Bạn chưa nhập gì — vui lòng điền đầy đủ các mục có dấu * trước khi lưu."); return; }
-    setWarn("");
     // Thành viên tự nhập (không có quyền quản lý) chỉ được thêm đúng thông tin của chính mình
     const finalForm = perm.canManage ? form : { ...form, name: user };
+    if (items.some((m) => normalizeName(m.name) === normalizeName(finalForm.name))) {
+      setWarn(`Thành viên "${finalForm.name}" đã có tên trong danh sách — không thể lưu trùng.`);
+      return;
+    }
+    setWarn("");
     await setItems([...items, { id: Date.now(), ...finalForm }]);
-    setForm({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+    setForm({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -1100,7 +1084,7 @@ function RosterTab({ perm, user }) {
 
   const startEdit = (m) => {
     setEditingId(m.id);
-    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
+    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Thành viên", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
@@ -1142,9 +1126,9 @@ function RosterTab({ perm, user }) {
   // thuộc tiểu đội nào thì được xếp vào phần thành viên của tiểu đội đó, kèm chú thích đúng chức vụ
   // của họ (không chiếm vị trí Tiểu đội trưởng/phó).
   const squadAll = sortedItems.filter((m) => (m.tieuDoi || "1") === selectedSquad);
-  const squadLeader = squadAll.filter((m) => m.role === "Tiểu đội trưởng");
-  const squadDeputy = squadAll.filter((m) => m.role === "Tiểu đội phó");
-  const squadOthers = squadAll.filter((m) => m.role !== "Tiểu đội trưởng" && m.role !== "Tiểu đội phó");
+  const squadLeader = squadAll.filter((m) => hasRole(m.role, "Tiểu đội trưởng"));
+  const squadDeputy = squadAll.filter((m) => hasRole(m.role, "Tiểu đội phó"));
+  const squadOthers = squadAll.filter((m) => !hasRole(m.role, "Tiểu đội trưởng") && !hasRole(m.role, "Tiểu đội phó"));
   const squadOrdered = [...squadLeader, ...squadDeputy, ...squadOthers];
   // Tổng quân số của từng tiểu đội (1 → 4), hiển thị kèm nút chọn tiểu đội
   const squadCounts = ["1", "2", "3", "4"].reduce((acc, s) => {
@@ -1258,9 +1242,7 @@ function RosterTab({ perm, user }) {
             <input className={inputCls} style={inputStyle} value={form.name} disabled={!perm.canManage} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Chức vụ" required>
-            <select className={inputCls} style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <RoleMultiSelect value={form.role} onChange={(v) => setForm({ ...form, role: v })} />
           </Field>
           <Field label="Tiểu đội" required>
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
@@ -1289,9 +1271,7 @@ function RosterTab({ perm, user }) {
           <Field label="Mã số học viên"><input className={inputCls} style={inputStyle} value={editForm.msv} onChange={(e) => setEditForm({ ...editForm, msv: e.target.value })} /></Field>
           <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
           <Field label="Chức vụ">
-            <select className={inputCls} style={inputStyle} value={editForm.role} disabled={!canEditAll} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
-              {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <RoleMultiSelect value={editForm.role} onChange={(v) => setEditForm({ ...editForm, role: v })} disabled={!canEditAll} />
           </Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={editForm.tieuDoi} disabled={!canEditAll} onChange={(e) => setEditForm({ ...editForm, tieuDoi: e.target.value })}>
@@ -1314,7 +1294,7 @@ function RosterTab({ perm, user }) {
       )}
 
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : filteredItems.length === 0 ? (
-        <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
+        <EmptyState text="Không tìm thấy thành viên nào khớp với từ khoá tìm kiếm." />
       ) : (
         <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 370 }}>
           <table className="w-full f-body table-lines" style={{ fontSize: "12.5px" }}>
@@ -1341,7 +1321,7 @@ function RosterTab({ perm, user }) {
                   <td className="px-2.5 py-2 f-mono font-bold" style={{ color: T.ink, borderRight: `1px solid ${T.paperDark}` }}>{m.stt || "—"}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.msv || "—"}</td>
                   <td className="px-2.5 py-2 font-bold text-[11px] leading-tight" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.name}</td>
-                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.role}</td>
+                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{roleDisplay(m.role)}</td>
                   <td className="px-2.5 py-2 f-mono whitespace-nowrap" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.tieuDoi ? `Tiểu đội ${m.tieuDoi}` : "—"}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{formatDob(m.dob)}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.phone || "—"}</td>
@@ -1368,7 +1348,7 @@ function RosterTab({ perm, user }) {
 
       {/* ---- Danh sách theo tiểu đội (tự động lấy dữ liệu từ danh sách trung đội ở trên) ---- */}
       <div className="my-8" style={{ borderTop: `1px dashed ${T.paperDark}` }} />
-      <SectionHeader icon={Users} eyebrow={`Tiểu đội ${selectedSquad}: ${squadOrdered.length} quân nhân`} title="Danh sách tiểu đội" />
+      <SectionHeader icon={Users} eyebrow={`Tiểu đội ${selectedSquad}: ${squadOrdered.length} thành viên`} title="Danh sách tiểu đội" />
       <p className="f-body text-xs mb-4 -mt-2" style={{ color: T.inkSoft }}>
         Số 1 là Tiểu đội trưởng, số 2 là Tiểu đội phó, còn lại là thành viên đánh số tiếp theo tăng dần. Riêng Trung đội trưởng / Trung đội phó
         thuộc tiểu đội nào sẽ được xếp vào thành viên của tiểu đội đó, kèm chú thích đúng chức vụ của họ.
@@ -1402,12 +1382,12 @@ function RosterTab({ perm, user }) {
       </div>
 
       {loading ? <LoadingRow /> : squadOrdered.length === 0 ? (
-        <EmptyState text={`Chưa có quân nhân nào thuộc Tiểu đội ${selectedSquad}.`} />
+        <EmptyState text={`Chưa có thành viên nào thuộc Tiểu đội ${selectedSquad}.`} />
       ) : (
         <div className="stamp-border card-sheet" style={{ background: "#fff" }}>
           {squadOrdered.map((m, i) => {
-            const isSquadCommand = m.role === "Tiểu đội trưởng" || m.role === "Tiểu đội phó";
-            const isPlatoonCommand = m.role === "Trung đội trưởng" || m.role === "Trung đội phó";
+            const isSquadCommand = hasRole(m.role, "Tiểu đội trưởng") || hasRole(m.role, "Tiểu đội phó");
+            const isPlatoonCommand = hasRole(m.role, "Trung đội trưởng") || hasRole(m.role, "Trung đội phó");
             return (
               <div
                 key={m.id}
@@ -1433,12 +1413,12 @@ function RosterTab({ perm, user }) {
                           className="f-display text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                           style={{ background: T.green, color: T.paper }}
                         >
-                          {m.role}
+                          {roleDisplay(m.role)}
                         </span>
                       )}
                     </div>
                     <div className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
-                      {!isPlatoonCommand ? m.role : "Thành viên"}{m.msv ? ` · ${m.msv}` : ""}
+                      {!isPlatoonCommand ? roleDisplay(m.role) : "Thành viên"}{m.msv ? ` · ${m.msv}` : ""}
                     </div>
                   </div>
                 </div>
@@ -1656,7 +1636,7 @@ function DutyScheduleTab({ user, perm }) {
   // Mỗi lượt trực có khung thời gian (từ giờ/ngày → đến giờ/ngày). Khi ngày hệ thống qua khỏi "đến ngày",
   // trang tự động chuyển sang lượt trực hiện hành/kế tiếp — giống Phụ lục trực cuối tuần.
   // Dữ liệu các lượt trực cũ KHÔNG bị xoá — được giữ lại để quy trách nhiệm, chỉ xem lại chứ không xoá được.
-  const commanderCandidates = roster.items.filter((m) => m.role === "Trung đội trưởng" || m.role === "Trung đội phó");
+  const commanderCandidates = roster.items.filter((m) => hasRole(m.role, "Trung đội trưởng") || hasRole(m.role, "Trung đội phó"));
   const duty = items.filter((i) => i.type === "Trực ban");
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -1769,7 +1749,7 @@ function DutyScheduleTab({ user, perm }) {
               <select className={inputCls} style={inputStyle} value={form.commanderName} onChange={(e) => setForm({ ...form, commanderName: e.target.value })}>
                 <option value="">— Chọn người trực chỉ huy —</option>
                 {commanderCandidates.map((m) => (
-                  <option key={m.id} value={m.name}>{m.name} ({m.role})</option>
+                  <option key={m.id} value={m.name}>{m.name} ({roleDisplay(m.role)})</option>
                 ))}
               </select>
             </Field>
@@ -1957,15 +1937,16 @@ function DutyScheduleTab({ user, perm }) {
   );
 }
 
-/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian nghỉ, danh sách theo tiểu đội) ============
-   - Mỗi đợt có khoảng thời gian nghỉ riêng (từ ngày/giờ → đến ngày/giờ).
-   - Khi ngày hiện tại đã qua khỏi "Ngày kết thúc nghỉ" của đợt đang xem, hệ thống tự động chuyển
+/* ============ PHỤ LỤC TRỰC CUỐI TUẦN (thời gian trực, danh sách theo tiểu đội) ============
+   - Mỗi đợt có khoảng thời gian trực riêng (từ ngày/giờ → đến ngày/giờ).
+   - Khi ngày hiện tại đã qua khỏi "Ngày kết thúc trực" của đợt đang xem, hệ thống tự động chuyển
      sang đợt hiện hành/kế tiếp (giống cơ chế "qua 0h ngày mới" của tab Đăng ký ra ngoài).
-   - Các đợt trước đó KHÔNG bị xoá — vẫn chọn lại được trong ô "Xem đợt nghỉ" để quản lý học viên
+   - Các đợt trước đó KHÔNG bị xoá — vẫn chọn lại được trong ô "Xem đợt trực" để quản lý học viên
      (giống hệt cách "Xem theo ngày" ở tab Đăng ký ra ngoài).
 */
 function WeekendRestAppendix({ user, perm }) {
   const { items, setItems, loading } = useSharedList("weekendRest");
+  const { items: rosterItems } = useSharedList("roster");
   const [form, setForm] = useState({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
@@ -2002,7 +1983,7 @@ function WeekendRestAppendix({ user, perm }) {
   }, [currentId, items]);
 
   const create = async () => {
-    if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu nghỉ và Ngày kết thúc nghỉ trước khi lưu."); return; }
+    if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu trực và Ngày kết thúc trực trước khi lưu."); return; }
     setWarn("");
     const newEntry = { id: Date.now(), ...form, by: user, members: [], approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" };
     await setItems([newEntry, ...items]);
@@ -2021,22 +2002,22 @@ function WeekendRestAppendix({ user, perm }) {
 
   return (
     <div>
-      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực cuối tuần — thời gian nghỉ"
-        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt nghỉ</Btn>} />
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Trực Cuối Tuần — Thời Gian Trực"
+        action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Tạo đợt trực</Btn>} />
 
       {perm.canManage && showForm && (
         <div className="stamp-border p-4 mb-5 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ background: "#fff" }}>
           <div className="md:col-span-2"><FormWarning message={warn} /></div>
-          <Field label="Ngày bắt đầu nghỉ" required>
+          <Field label="Ngày bắt đầu trực" required>
             <input type="date" className={inputCls} style={inputStyle} value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} />
           </Field>
-          <Field label="Giờ bắt đầu nghỉ (mặc định 17:00, có thể đổi)">
+          <Field label="Giờ bắt đầu trực (mặc định 17:00, có thể đổi)">
             <input type="time" className={inputCls} style={inputStyle} value={form.fromTime} onChange={(e) => setForm({ ...form, fromTime: e.target.value })} />
           </Field>
-          <Field label="Ngày kết thúc nghỉ" required>
+          <Field label="Ngày kết thúc trực" required>
             <input type="date" className={inputCls} style={inputStyle} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} />
           </Field>
-          <Field label="Giờ kết thúc nghỉ (mặc định 21:00, có thể đổi)">
+          <Field label="Giờ kết thúc trực (mặc định 21:00, có thể đổi)">
             <input type="time" className={inputCls} style={inputStyle} value={form.toTime} onChange={(e) => setForm({ ...form, toTime: e.target.value })} />
           </Field>
           <div className="md:col-span-2"><Field label="Ghi chú"><input className={inputCls} style={inputStyle} value={form.ghiChu} onChange={(e) => setForm({ ...form, ghiChu: e.target.value })} /></Field></div>
@@ -2046,14 +2027,14 @@ function WeekendRestAppendix({ user, perm }) {
               <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
             </Field>
           </div>
-          <div className="md:col-span-2"><Btn onClick={create}>Tạo đợt nghỉ</Btn></div>
+          <div className="md:col-span-2"><Btn onClick={create}>Tạo đợt trực</Btn></div>
         </div>
       )}
 
-      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đợt nghỉ cuối tuần nào." /> : (
+      {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có đợt trực cuối tuần nào." /> : (
         <>
           <div className="mb-4 max-w-md">
-            <Field label="Xem đợt nghỉ (chọn lại đợt trước để xem/quản lý học viên)">
+            <Field label="Xem đợt trực (chọn lại đợt trước để xem/quản lý học viên)">
               <select className={inputCls} style={inputStyle} value={viewEntryId || ""} onChange={(e) => setViewEntryId(Number(e.target.value))}>
                 {sortedEntries.map((e) => (
                   <option key={e.id} value={e.id}>{entryLabel(e)}</option>
@@ -2063,7 +2044,7 @@ function WeekendRestAppendix({ user, perm }) {
           </div>
 
           {viewEntry && (
-            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} />
+            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} rosterItems={rosterItems} />
           )}
         </>
       )}
@@ -2071,47 +2052,53 @@ function WeekendRestAppendix({ user, perm }) {
   );
 }
 
-function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry }) {
-  const [mForm, setMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry, rosterItems }) {
   const [showMForm, setShowMForm] = useState(false);
   const [mWarn, setMWarn] = useState("");
   const [approvalUrlInput, setApprovalUrlInput] = useState(entry.approvalUrl || "");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
-  const getFileName = (u) => {
-    try {
-      const clean = (u || "").split("?")[0];
-      const last = clean.split("/").pop();
-      return decodeURIComponent(last) || "Tệp đính kèm";
-    } catch (e) {
-      return "Tệp đính kèm";
-    }
-  };
 
   useEffect(() => { setApprovalUrlInput(entry.approvalUrl || ""); }, [entry.id, entry.approvalUrl]);
 
-  const addMember = async () => {
-    if (!mForm.hoTen.trim() || !mForm.namSinh.trim()) {
-      setMWarn("Vui lòng nhập đủ Họ và tên, Năm sinh trước khi lưu.");
+  // Thêm người vào Danh sách trực: tick chọn (nhiều) người có sẵn trong Quân số — không nhập tay.
+  // Thông tin Họ và tên / Năm sinh / Tiểu đội / SĐT được lấy tự động từ Quân số.
+  const [selectedRosterIds, setSelectedRosterIds] = useState([]);
+  const existingNames = new Set((entry.members || []).map((m) => normalizeName(m.hoTen)));
+  const availableRoster = [...(rosterItems || [])]
+    .filter((r) => !existingNames.has(normalizeName(r.name)))
+    .sort((a, b) => Number(a.tieuDoi || 1) - Number(b.tieuDoi || 1) || String(a.name).localeCompare(String(b.name), "vi"));
+  const toggleRosterSelect = (id) => setSelectedRosterIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const addSelectedMembers = async () => {
+    if (selectedRosterIds.length === 0) {
+      setMWarn("Vui lòng tick chọn ít nhất một người từ Quân số trước khi thêm vào danh sách trực.");
       return;
     }
     setMWarn("");
-    const member = { id: Date.now(), ...mForm };
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: [...(e.members || []), member] } : e));
+    const chosen = (rosterItems || []).filter((r) => selectedRosterIds.includes(r.id));
+    const newMembers = chosen.map((r, idx) => ({
+      id: Date.now() + idx,
+      hoTen: r.name || "",
+      namSinh: yearFromDob(r.dob),
+      tieuDoi: r.tieuDoi || "1",
+      phone: r.phone || "",
+    }));
+    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: [...(e.members || []), ...newMembers] } : e));
     await setEntries(next);
-    setMForm({ hoTen: "", namSinh: "", tieuDoi: "1" });
+    setSelectedRosterIds([]);
     setShowMForm(false);
   };
   const removeMember = async (mid) => {
     const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).filter((m) => m.id !== mid) } : e));
     await setEntries(next);
   };
-  // Sửa thông tin thành viên khi chỉ huy phát hiện sai sót (họ tên/năm sinh/tiểu đội)
+  // Sửa thông tin thành viên khi chỉ huy phát hiện sai sót (họ tên/năm sinh/tiểu đội/SĐT)
   const [editingMemberId, setEditingMemberId] = useState(null);
-  const [editMForm, setEditMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1" });
+  const [editMForm, setEditMForm] = useState({ hoTen: "", namSinh: "", tieuDoi: "1", phone: "" });
   const [editMWarn, setEditMWarn] = useState("");
   const startEditMember = (m) => {
     setEditingMemberId(m.id);
-    setEditMForm({ hoTen: m.hoTen || "", namSinh: m.namSinh || "", tieuDoi: m.tieuDoi || "1" });
+    setEditMForm({ hoTen: m.hoTen || "", namSinh: m.namSinh || "", tieuDoi: m.tieuDoi || "1", phone: m.phone || "" });
     setEditMWarn("");
   };
   const cancelEditMember = () => { setEditingMemberId(null); setEditMWarn(""); };
@@ -2125,12 +2112,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     await setEntries(next);
     setEditingMemberId(null);
   };
-  // Trạng thái thẻ ra vào cổng cho từng người trong danh sách nghỉ cuối tuần (dùng chung logic với tab Ra ngoài)
-  const setMemberThe = async (mid, trangThai) => {
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, members: (e.members || []).map((m) => (m.id === mid ? { ...m, theTrangThai: trangThai } : m)) } : e));
-    await setEntries(next);
-  };
-  // File ký duyệt của lãnh đạo cho riêng tuần/đợt nghỉ này
+  // File ký duyệt của lãnh đạo cho riêng tuần/đợt trực này
   const saveApproval = async (url) => {
     setApprovalUrlInput(url);
     const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: url, approvalUploadedBy: user, approvalUploadedAt: new Date().toISOString() } : e));
@@ -2141,8 +2123,6 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" } : e));
     await setEntries(next);
   };
-  const canApprove = perm.isAdmin || perm.isCommandRole;
-
   const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const toggleSelectMember = (id) => setSelectedMemberId((s) => (s === id ? null : id));
@@ -2153,7 +2133,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         <div>
           <div className="f-display font-semibold text-sm flex items-center gap-2" style={{ color: T.green }}>
             <CalendarDays size={15} />
-            Nghỉ từ {entry.fromTime || "17:00"} ngày {entry.fromDate ? new Date(entry.fromDate).toLocaleDateString("vi-VN") : "—"}
+            Trực từ {entry.fromTime || "17:00"} ngày {entry.fromDate ? new Date(entry.fromDate).toLocaleDateString("vi-VN") : "—"}
             {" → "}
             {entry.toTime || "21:00"} ngày {entry.toDate ? new Date(entry.toDate).toLocaleDateString("vi-VN") : "—"}
           </div>
@@ -2171,7 +2151,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
           )}
         </div>
         {perm.canManage && (
-          <button onClick={() => onRemoveEntry(entry.id)} title="Xoá đợt nghỉ"><Trash2 size={15} style={{ color: T.red }} /></button>
+          <button onClick={() => onRemoveEntry(entry.id)} title="Xoá đợt trực"><Trash2 size={15} style={{ color: T.red }} /></button>
         )}
       </div>
 
@@ -2185,21 +2165,32 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
       </div>
 
       {perm.canManage && showMForm && (
-        <div className="mt-3 p-3 grid grid-cols-1 md:grid-cols-3 gap-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
-          <div className="md:col-span-3"><FormWarning message={mWarn} /></div>
-          <Field label="Họ và tên" required>
-            <input className={inputCls} style={inputStyle} value={mForm.hoTen} onChange={(e) => setMForm({ ...mForm, hoTen: e.target.value })} placeholder="VD: Nguyễn Văn A" />
-          </Field>
-          <Field label="Năm sinh" required>
-            <input className={inputCls} style={inputStyle} value={mForm.namSinh} onChange={(e) => setMForm({ ...mForm, namSinh: e.target.value })} placeholder="VD: 2004" />
-          </Field>
-          <Field label="Tiểu đội" required>
-            <select className={inputCls} style={inputStyle} value={mForm.tieuDoi} onChange={(e) => setMForm({ ...mForm, tieuDoi: e.target.value })}>
-              <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
-              <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
-            </select>
-          </Field>
-          <div className="md:col-span-3"><Btn onClick={addMember}>Thêm vào danh sách</Btn></div>
+        <div className="mt-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+          <FormWarning message={mWarn} />
+          <div className="f-body text-[11px] italic mb-2" style={{ color: T.inkSoft }}>
+            Tick chọn một hoặc nhiều người từ Quân số để đưa vào Danh sách trực — Họ và tên, Năm sinh, Tiểu đội, SĐT sẽ tự động lấy theo Quân số.
+          </div>
+          {availableRoster.length === 0 ? (
+            <div className="f-body text-xs italic py-2 text-center" style={{ color: T.inkSoft }}>
+              Tất cả thành viên trong Quân số đã có trong danh sách trực đợt này.
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+              {availableRoster.map((r) => (
+                <label key={r.id} className="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
+                  <input type="checkbox" checked={selectedRosterIds.includes(r.id)} onChange={() => toggleRosterSelect(r.id)} />
+                  <span className="f-body text-xs font-medium" style={{ color: T.ink }}>{r.name}</span>
+                  <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
+                    · TĐ{r.tieuDoi || "—"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2 mt-3">
+            <Btn onClick={addSelectedMembers}>Xác nhận, thêm vào danh sách trực ({selectedRosterIds.length})</Btn>
+            <Btn variant="outline" onClick={() => { setShowMForm(false); setSelectedRosterIds([]); setMWarn(""); }}>Huỷ</Btn>
+          </div>
         </div>
       )}
 
@@ -2209,9 +2200,15 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         </div>
         {entry.approvalUrl ? (
           <div>
-            <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1.5" style={{ color: T.green }}>
-              <Paperclip size={12} /> {getFileName(entry.approvalUrl)}
-            </a>
+            {isImage(entry.approvalUrl) ? (
+              <a href={entry.approvalUrl} target="_blank" rel="noreferrer">
+                <img src={entry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+              </a>
+            ) : (
+              <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file đã ký duyệt
+              </a>
+            )}
             <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
               Tải lên bởi {entry.approvalUploadedBy || "—"} lúc {entry.approvalUploadedAt ? new Date(entry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
             </div>
@@ -2234,17 +2231,17 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
       </div>
 
       {sortedMembers.length === 0 ? (
-        <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách nghỉ đợt này.</div>
+        <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Chưa có ai trong danh sách trực đợt này.</div>
       ) : (
         <div className="overflow-x-auto mt-3">
-          <table className="w-full text-sm f-body table-lines" style={{ fontSize: "12.5px" }}>
+          <table className="w-full text-sm f-body table-lines table-grid" style={{ fontSize: "12.5px" }}>
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
                 <th className="text-left px-2 py-1.5 w-8">STT</th>
                 <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
-                <th className="text-left px-2 py-1.5">N.sinh</th>
-                <th className="text-left px-2 py-1.5">T.đội</th>
-                <th className="text-left px-2 py-1.5 min-w-[170px]">Thẻ ra vào cổng</th>
+                <th className="text-left px-2 py-1.5">Năm sinh</th>
+                <th className="text-left px-2 py-1.5">Tiểu đội</th>
+                <th className="text-left px-2 py-1.5 min-w-[120px]">SĐT</th>
                 <th className="px-2 py-1.5 w-14"></th>
               </tr>
             </thead>
@@ -2255,13 +2252,14 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                     <td className="px-2 py-1.5 f-mono">{i + 1}</td>
                     <td colSpan={5} className="px-2 py-2.5">
                       <FormWarning message={editMWarn} />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                         <input className={inputCls} style={inputStyle} value={editMForm.hoTen} onChange={(e) => setEditMForm({ ...editMForm, hoTen: e.target.value })} placeholder="Họ và tên" />
                         <input className={inputCls} style={inputStyle} value={editMForm.namSinh} onChange={(e) => setEditMForm({ ...editMForm, namSinh: e.target.value })} placeholder="Năm sinh" />
                         <select className={inputCls} style={inputStyle} value={editMForm.tieuDoi} onChange={(e) => setEditMForm({ ...editMForm, tieuDoi: e.target.value })}>
                           <option value="1">Tiểu đội 1</option><option value="2">Tiểu đội 2</option>
                           <option value="3">Tiểu đội 3</option><option value="4">Tiểu đội 4</option>
                         </select>
+                        <input className={inputCls} style={inputStyle} value={editMForm.phone} onChange={(e) => setEditMForm({ ...editMForm, phone: e.target.value })} placeholder="SĐT" />
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <Btn onClick={saveEditMember}>Lưu</Btn>
@@ -2275,9 +2273,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
                     <td className="px-2 py-1.5 font-medium">{m.hoTen}</td>
                     <td className="px-2 py-1.5 f-mono">{m.namSinh}</td>
                     <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
-                    <td className="px-2 py-1.5">
-                      <TheTrangThaiBadge o={m} canAct={perm.canManage || perm.isOwner(m.hoTen)} canApprove={canApprove} setThe={setMemberThe} />
-                    </td>
+                    <td className="px-2 py-1.5 f-mono">{m.phone || "—"}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center justify-end gap-2">
                         {perm.canManage && (
@@ -2294,6 +2290,187 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ============ TAB: LỊCH NGHỈ (Nghỉ cuối tuần) ============
+   Chức năng giống hệt phụ lục "Trực cuối tuần" (tab Lịch trực), chỉ đổi tên hiển thị:
+     "Trực cuối tuần" → "Nghỉ cuối tuần", "Danh sách trực" → "Danh sách nghỉ".
+   Khác biệt duy nhất: KHÔNG tạo đợt nghỉ / KHÔNG thêm người thủ công ở đây — mọi thứ được liên kết
+   trực tiếp với "Danh sách trung đội" (Quân số) và phụ lục "Trực cuối tuần":
+     - Thời gian từng đợt nghỉ lấy y hệt từ các đợt đã tạo bên "Trực cuối tuần".
+     - "Danh sách nghỉ" = toàn bộ Quân số, TRỪ những người đã có trong "Danh sách trực" của đúng đợt đó
+       (khớp theo Họ và tên) — phần còn lại tự động là người nghỉ, không cần nhập tay.
+   Trạng thái "Thẻ ra vào cổng" của từng người trong Danh sách nghỉ vẫn thao tác được như cũ, lưu kèm
+   ngay trên đợt nghỉ đó (trong phụ lục Trực cuối tuần) nên luôn đồng bộ 2 bên.
+*/
+function WeekendOffTab({ user, perm }) {
+  const { items, setItems, loading } = useSharedList("weekendRest");
+  const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const computeCurrentId = (list) => {
+    if (list.length === 0) return null;
+    const active = list.find((e) => e.fromDate && e.toDate && e.fromDate <= todayStr && todayStr <= e.toDate);
+    if (active) return active.id;
+    const upcoming = [...list].filter((e) => e.fromDate > todayStr).sort((a, b) => a.fromDate.localeCompare(b.fromDate))[0];
+    if (upcoming) return upcoming.id;
+    const past = [...list].filter((e) => e.toDate < todayStr).sort((a, b) => b.toDate.localeCompare(a.toDate))[0];
+    return past ? past.id : list[0].id;
+  };
+
+  const currentId = computeCurrentId(items);
+  const [viewEntryId, setViewEntryId] = useState(currentId);
+  const prevCurrentRef = useRef(currentId);
+
+  useEffect(() => {
+    if (viewEntryId === prevCurrentRef.current && currentId !== prevCurrentRef.current) {
+      setViewEntryId(currentId);
+    }
+    if (viewEntryId && !items.find((e) => e.id === viewEntryId)) {
+      setViewEntryId(currentId);
+    }
+    prevCurrentRef.current = currentId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, items]);
+
+  const sortedEntries = [...items].sort((a, b) => (b.fromDate || "").localeCompare(a.fromDate || ""));
+  const viewEntry = items.find((e) => e.id === viewEntryId) || null;
+  const entryLabel = (e) =>
+    `${e.fromTime || "17:00"} ${e.fromDate ? new Date(e.fromDate).toLocaleDateString("vi-VN") : "—"} → ${e.toTime || "21:00"} ${e.toDate ? new Date(e.toDate).toLocaleDateString("vi-VN") : "—"}` +
+    (e.toDate && e.toDate < todayStr ? "  (đã qua)" : e.fromDate && e.fromDate > todayStr ? "  (sắp tới)" : "  (đang diễn ra)");
+
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
+
+  // Danh sách nghỉ = Quân số - Danh sách trực (của đúng đợt đang xem), khớp theo Họ và tên.
+  const dutyNameSet = new Set((viewEntry?.members || []).map((m) => normalizeName(m.hoTen)));
+  const restMembers = rosterItems.filter((r) => !dutyNameSet.has(normalizeName(r.name)));
+  const sortedRestMembers = [...restMembers].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
+
+  const canApprove = perm.isAdmin || perm.isCommandRole;
+  const setRestThe = async (rosterId, trangThai) => {
+    if (!viewEntry) return;
+    const nextRestStatus = { ...(viewEntry.restStatus || {}), [rosterId]: trangThai };
+    const next = items.map((e) => (e.id === viewEntry.id ? { ...e, restStatus: nextRestStatus } : e));
+    await setItems(next);
+  };
+
+  return (
+    <div>
+      <SectionHeader icon={CalendarDays} eyebrow="Phụ lục" title="Nghỉ cuối tuần — thời gian nghỉ" />
+
+      <p className="f-body text-xs mb-4" style={{ color: T.inkSoft }}>
+        Danh sách nghỉ được lấy tự động từ Quân số, trừ đi những người đã có trong Danh sách trực ở phụ lục
+        "Trực cuối tuần" (tab Lịch trực) — không cần tạo đợt nghỉ hay thêm người ở đây. Muốn tạo đợt nghỉ
+        mới hoặc thêm/sửa Danh sách trực, vào tab <b>Lịch trực → Trực cuối tuần</b>.
+      </p>
+
+      {(loading || rosterLoading) ? <LoadingRow /> : items.length === 0 ? (
+        <EmptyState text="Chưa có đợt nghỉ cuối tuần nào — vào tab Lịch trực → Trực cuối tuần để tạo đợt nghỉ." />
+      ) : (
+        <>
+          <div className="mb-4 max-w-md">
+            <Field label="Xem đợt nghỉ">
+              <select className={inputCls} style={inputStyle} value={viewEntryId || ""} onChange={(e) => setViewEntryId(Number(e.target.value))}>
+                {sortedEntries.map((e) => (
+                  <option key={e.id} value={e.id}>{entryLabel(e)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {viewEntry && (
+            <div className="stamp-border p-4" style={{ background: "#fff" }}>
+              <div className="f-display font-semibold text-sm flex items-center gap-2" style={{ color: T.green }}>
+                <CalendarDays size={15} />
+                Nghỉ từ {viewEntry.fromTime || "17:00"} ngày {viewEntry.fromDate ? new Date(viewEntry.fromDate).toLocaleDateString("vi-VN") : "—"}
+                {" → "}
+                {viewEntry.toTime || "21:00"} ngày {viewEntry.toDate ? new Date(viewEntry.toDate).toLocaleDateString("vi-VN") : "—"}
+              </div>
+              {viewEntry.ghiChu && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{viewEntry.ghiChu}</div>}
+              {viewEntry.url && (
+                isImage(viewEntry.url) ? (
+                  <a href={viewEntry.url} target="_blank" rel="noreferrer" className="block mt-2">
+                    <img src={viewEntry.url} alt="Phụ lục" className="max-w-[220px] max-h-48 stamp-border" />
+                  </a>
+                ) : (
+                  <a href={viewEntry.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                    <Paperclip size={12} /> Xem file đính kèm
+                  </a>
+                )
+              )}
+
+              <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+                <span className="f-mono text-[13px] uppercase tracking-widest font-bold" style={{ color: T.amberDark }}>
+                  Danh sách nghỉ ({sortedRestMembers.length} người)
+                </span>
+              </div>
+
+              <div className="mt-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
+                <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
+                  <Paperclip size={13} /> File ký duyệt của lãnh đạo (tuần này)
+                </div>
+                {viewEntry.approvalUrl ? (
+                  <div>
+                    {isImage(viewEntry.approvalUrl) ? (
+                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer">
+                        <img src={viewEntry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+                      </a>
+                    ) : (
+                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                        <Paperclip size={12} /> Xem file đã ký duyệt
+                      </a>
+                    )}
+                    <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
+                      Tải lên bởi {viewEntry.approvalUploadedBy || "—"} lúc {viewEntry.approvalUploadedAt ? new Date(viewEntry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa có file ký duyệt của lãnh đạo cho tuần này.</div>
+                )}
+              </div>
+
+              {sortedRestMembers.length === 0 ? (
+                <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Không có ai trong danh sách nghỉ đợt này.</div>
+              ) : (
+                <div className="overflow-x-auto overflow-y-auto mt-3" style={{ maxHeight: 460 }}>
+                  <table className="w-full text-sm f-body table-lines table-grid" style={{ fontSize: "12.5px" }}>
+                    <thead>
+                      <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
+                        <th className="text-left px-2 py-1.5 w-8 sticky top-0" style={{ background: T.green }}>STT</th>
+                        <th className="text-left px-2 py-1.5 min-w-[100px] sticky top-0" style={{ background: T.green }}>Họ và tên</th>
+                        <th className="text-left px-2 py-1.5 sticky top-0" style={{ background: T.green }}>Năm sinh</th>
+                        <th className="text-left px-2 py-1.5 sticky top-0" style={{ background: T.green }}>Tiểu đội</th>
+                        <th className="text-left px-2 py-1.5 min-w-[170px] sticky top-0" style={{ background: T.green }}>Thẻ ra vào cổng</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRestMembers.map((m, i) => (
+                        <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                          <td className="px-2 py-1.5 f-mono">{i + 1}</td>
+                          <td className="px-2 py-1.5 font-medium">{m.name}</td>
+                          <td className="px-2 py-1.5 f-mono">{formatDob(m.dob)}</td>
+                          <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
+                          <td className="px-2 py-1.5">
+                            <TheTrangThaiBadge
+                              o={{ id: m.id, theTrangThai: (viewEntry.restStatus || {})[m.id] || "chua_nhan" }}
+                              canAct={perm.canManage || perm.isOwner(m.name)}
+                              canApprove={canApprove}
+                              setThe={setRestThe}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2369,6 +2546,7 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
   const roster = useSharedList("roster");
+  const rosterSorted = [...roster.items].sort((a, b) => (Number(a.tieuDoi) - Number(b.tieuDoi)) || String(a.name).localeCompare(String(b.name), "vi"));
   const lock = useOutingLock();
   const today = useLiveToday();
   const [viewDate, setViewDate] = useState(today);
@@ -2432,6 +2610,15 @@ function OutingTab({ user, perm }) {
     // (dành cho trường hợp có nhu cầu phát sinh mà không đăng ký kịp); thành viên thường vẫn bị chặn.
     if (isLocked && !canApprove) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới. Liên hệ Trung đội trưởng/phó nếu có nhu cầu phát sinh."); return; }
     if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
+    // Tránh trùng lặp: cùng một người, cùng một ngày, đang Chờ duyệt hoặc đã Đã duyệt thì không cho tạo đăng ký mới nữa.
+    const trung = items.some((o) => {
+      const st = o.duyet || "Chờ duyệt";
+      return o.ngay === form.ngay && normalizeName(o.name) === normalizeName(form.name) && (st === "Chờ duyệt" || st === "Đã duyệt");
+    });
+    if (trung) {
+      setWarn(`"${form.name}" đã có đăng ký ra ngoài ngày ${new Date(form.ngay).toLocaleDateString("vi-VN")} đang Chờ duyệt hoặc đã Đã duyệt — không thể tạo trùng.`);
+      return;
+    }
     setWarn("");
     // Quản trị / TĐT / TĐP tự thêm người thì coi như đã duyệt luôn; thành viên tự đăng ký thì vào hàng chờ duyệt.
     await setItems([
@@ -2509,7 +2696,7 @@ function OutingTab({ user, perm }) {
       return (
         <div className="stamp-border p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5" style={{ background: "#FBF3DD" }}>
           <div className="md:col-span-2"><FormWarning message={editErr} /></div>
-          <Field label="Họ và tên (đổi tên/đổi người ra)" required><RosterNamePicker value={editForm.name} onChange={(name) => setEditForm({ ...editForm, name })} rosterItems={roster.items} /></Field>
+          <Field label="Họ và tên (đổi tên/đổi người ra)" required><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={editForm.namSinh} onChange={(e) => setEditForm({ ...editForm, namSinh: e.target.value })} /></Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={editForm.tieuDoi} onChange={(e) => setEditForm({ ...editForm, tieuDoi: e.target.value })}>
@@ -2550,7 +2737,9 @@ function OutingTab({ user, perm }) {
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-          <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
+          {o.duyet === "Đã duyệt" && (
+            <TheTrangThaiBadge o={o} canAct={canAct(o)} canApprove={canApprove} setThe={setThe} />
+          )}
           <span className="f-display text-[9px] uppercase tracking-wider px-1.5 py-0.5" style={{ background: duyetColor[o.duyet || "Chờ duyệt"], color: "#fff" }}>{o.duyet || "Chờ duyệt"}</span>
           {o.duyet === "Đã duyệt" && (
             <span className="f-display text-[9px] uppercase tracking-wider px-1.5 py-0.5" style={{ background: o.trangThai === "Đã về" ? T.green : "#8A8F76", color: "#fff" }}>{o.trangThai}</span>
@@ -2628,7 +2817,27 @@ function OutingTab({ user, perm }) {
               Bạn thêm trực tiếp nên đăng ký này sẽ tự động ở trạng thái "Đã duyệt".
             </div>
           )}
-          <Field label="Họ và tên" required><RosterNamePicker value={form.name} onChange={(name) => setForm({ ...form, name })} rosterItems={roster.items} /></Field>
+          <Field label="Họ và tên" required>
+            <select
+              className={inputCls}
+              style={inputStyle}
+              value={form.name}
+              onChange={(e) => {
+                const chosen = roster.items.find((m) => m.name === e.target.value);
+                setForm({
+                  ...form,
+                  name: e.target.value,
+                  namSinh: chosen ? yearFromDob(chosen.dob) : form.namSinh,
+                  tieuDoi: chosen ? (chosen.tieuDoi || "1") : form.tieuDoi,
+                });
+              }}
+            >
+              <option value="">— Chọn tên trong Quân số —</option>
+              {rosterSorted.map((m) => (
+                <option key={m.id} value={m.name}>{m.name} (TĐ{m.tieuDoi || "—"})</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={form.namSinh} onChange={(e) => setForm({ ...form, namSinh: e.target.value })} placeholder="VD: 2004" /></Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
@@ -2713,6 +2922,8 @@ function AttendanceTab({ user, perm }) {
   const roster = useSharedList("roster");
   const { items, setItems, loading } = useSharedList("attendance");
   const [selectedStatId, setSelectedStatId] = useState(null);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const STATUSES = ["Có mặt", "Vắng", "Phép", "Không phép", "Ốm"];
@@ -2732,6 +2943,22 @@ function AttendanceTab({ user, perm }) {
     } else {
       await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status, by: user }]);
     }
+  };
+
+  const startEditNote = (member) => {
+    const rec = recordFor(member.id);
+    setEditingNoteId(member.id);
+    setNoteDraft(rec?.note || "");
+  };
+
+  const saveNote = async (member) => {
+    const existing = recordFor(member.id);
+    if (existing) {
+      await setItems(items.map((r) => (r.id === existing.id ? { ...r, note: noteDraft } : r)));
+    } else {
+      await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status: null, note: noteDraft, by: user }]);
+    }
+    setEditingNoteId(null);
   };
 
   const dayRecords = items.filter((r) => r.date === date);
@@ -2778,31 +3005,78 @@ function AttendanceTab({ user, perm }) {
       ) : markableRoster.length === 0 ? (
         <EmptyState text="Không tìm thấy tên của bạn trong danh sách quân số — liên hệ chỉ huy để được thêm vào Quân số." />
       ) : (
-        <div className="space-y-1.5 mb-8 overflow-y-auto" style={{ maxHeight: 300 }}>
-          {markableRoster.map((m) => {
-            const rec = recordFor(m.id);
-            return (
-              <div key={m.id} className="flex items-center justify-between gap-2 p-2 flex-wrap" style={{ background: "#fff" }}>
-                <div className="f-body text-xs font-medium" style={{ color: T.ink }}>{m.name} <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>· TĐ{m.tieuDoi || "—"}</span></div>
-                <div className="flex gap-1 flex-wrap">
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setStatus(m, s)}
-                      className="f-display text-[9.5px] uppercase tracking-wider px-2 py-0.5 flex items-center gap-1"
-                      style={{
-                        background: rec?.status === s ? statusColor[s] : "transparent",
-                        color: rec?.status === s ? "#fff" : statusColor[s],
-                        border: `1px solid ${statusColor[s]}`,
-                      }}
-                    >
-                      {rec?.status === s ? <CheckCircle2 size={10} /> : <Circle size={10} />} {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto overflow-y-auto mb-8 stamp-border" style={{ background: "#fff", maxHeight: 460 }}>
+          <table className="w-full text-xs f-body table-lines table-grid">
+            <thead>
+              <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                <th className="text-left px-2 py-1.5 w-8">STT</th>
+                <th className="text-left px-2 py-1.5 min-w-[110px]">Họ và tên</th>
+                <th className="text-left px-2 py-1.5">Tiểu đội</th>
+                <th className="text-left px-2 py-1.5 min-w-[240px]">Trạng thái</th>
+                <th className="px-2 py-1.5 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {markableRoster.map((m, i) => {
+                const rec = recordFor(m.id);
+                const editing = editingNoteId === m.id;
+                return (
+                  <React.Fragment key={m.id}>
+                    <tr style={{ background: i % 2 ? T.paper : "#fff" }}>
+                      <td className="px-2 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
+                      <td className="px-2 py-1.5 font-medium">
+                        {m.name}
+                        {rec?.note && !editing && (
+                          <div className="f-body text-[10px] italic mt-0.5" style={{ color: T.inkSoft }}>Ghi chú: {rec.note}</div>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi || "—"}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex gap-1 flex-wrap">
+                          {STATUSES.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => setStatus(m, s)}
+                              className="f-display text-[9.5px] uppercase tracking-wider px-2 py-0.5 flex items-center gap-1"
+                              style={{
+                                background: rec?.status === s ? statusColor[s] : "transparent",
+                                color: rec?.status === s ? "#fff" : statusColor[s],
+                                border: `1px solid ${statusColor[s]}`,
+                              }}
+                            >
+                              {rec?.status === s ? <CheckCircle2 size={10} /> : <Circle size={10} />} {s}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <button onClick={() => (editing ? setEditingNoteId(null) : startEditNote(m))} title="Sửa ghi chú">
+                          <Pencil size={13} style={{ color: T.green }} />
+                        </button>
+                      </td>
+                    </tr>
+                    {editing && (
+                      <tr style={{ background: T.paper }}>
+                        <td colSpan={5} className="px-2 py-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <input
+                              className={inputCls}
+                              style={{ ...inputStyle, fontSize: "11px", padding: "4px 8px", maxWidth: 320 }}
+                              placeholder="Ghi chú / lý do (VD: xin phép về quê, ốm sốt...)"
+                              value={noteDraft}
+                              onChange={(e) => setNoteDraft(e.target.value)}
+                            />
+                            <Btn size="sm" onClick={() => saveNote(m)}>Lưu</Btn>
+                            <Btn size="sm" variant="outline" onClick={() => setEditingNoteId(null)}>Huỷ</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -2810,15 +3084,16 @@ function AttendanceTab({ user, perm }) {
         <>
           <div className="f-display text-xs uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Tỷ lệ chuyên cần (tổng)</div>
           <div className="overflow-x-auto overflow-y-auto stamp-border" style={{ background: "#fff", maxHeight: 290 }}>
-            <table className="w-full text-xs f-body table-lines">
+            <table className="w-full text-xs f-body table-lines table-grid">
               <thead>
                 <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
-                  <th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
+                  <th className="text-left px-2.5 py-1.5 w-8">STT</th><th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.map((m, i) => (
                   <tr key={m.id} onClick={() => setSelectedStatId((s) => (s === m.id ? null : m.id))} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedStatId === m.id)}>
+                    <td className="px-2.5 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
                     <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
                     <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
                     <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
@@ -3331,23 +3606,28 @@ function PollTab({ user, perm }) {
 function BoardTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("posts");
   const [content, setContent] = useState("");
+  const [attachUrl, setAttachUrl] = useState("");
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [replyAttachUrl, setReplyAttachUrl] = useState("");
   const [warn, setWarn] = useState("");
   const [replyWarn, setReplyWarn] = useState("");
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   const post = async () => {
-    if (!content.trim()) { setWarn("Vui lòng nhập nội dung trước khi đăng."); return; }
+    if (!content.trim() && !attachUrl) { setWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi đăng."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), author: user, content, date: new Date().toISOString(), replies: [] }, ...items]);
+    await setItems([{ id: Date.now(), author: user, content, url: attachUrl, date: new Date().toISOString(), replies: [] }, ...items]);
     setContent("");
+    setAttachUrl("");
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const reply = async (id) => {
-    if (!replyText.trim()) { setReplyWarn("Vui lòng nhập nội dung trả lời trước khi gửi."); return; }
+    if (!replyText.trim() && !replyAttachUrl) { setReplyWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi gửi."); return; }
     setReplyWarn("");
-    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, date: new Date().toISOString() }] } : p));
+    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, url: replyAttachUrl, date: new Date().toISOString() }] } : p));
     setReplyText("");
+    setReplyAttachUrl("");
     setReplyOpen(null);
   };
   const toggleReaction = async (id) => setItems(items.map((p) => {
@@ -3366,6 +3646,19 @@ function BoardTab({ user, perm }) {
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
         <FormWarning message={warn} />
         <textarea rows={2} className={inputCls} style={inputStyle} placeholder="Viết gì đó cho cả trung đội…" value={content} onChange={(e) => setContent(e.target.value)} />
+        <UploadField onUploaded={setAttachUrl} />
+        {attachUrl && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {isImage(attachUrl) ? (
+              <img src={attachUrl} alt="Đính kèm" className="max-w-[140px] max-h-28 stamp-border" />
+            ) : (
+              <a href={attachUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file vừa tải lên
+              </a>
+            )}
+            <button onClick={() => setAttachUrl("")} title="Bỏ đính kèm"><X size={14} style={{ color: T.red }} /></button>
+          </div>
+        )}
         <div className="mt-2"><Btn onClick={post}>Đăng</Btn></div>
       </div>
 
@@ -3377,6 +3670,17 @@ function BoardTab({ user, perm }) {
                 <div>
                   <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
                   <p className="f-body text-sm mt-1" style={{ color: T.ink }}>{p.content}</p>
+                  {p.url && (
+                    isImage(p.url) ? (
+                      <a href={p.url} target="_blank" rel="noreferrer" className="block mt-2">
+                        <img src={p.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
+                      </a>
+                    ) : (
+                      <a href={p.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                        <Paperclip size={12} /> Xem file đính kèm
+                      </a>
+                    )
+                  )}
                   <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>{new Date(p.date).toLocaleString("vi-VN")}</div>
                 </div>
                 {(perm.canManage || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
@@ -3385,11 +3689,22 @@ function BoardTab({ user, perm }) {
               <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
 
               {p.replies.length > 0 && (
-                <div className="mt-3 ml-4 pl-3 space-y-2" style={{ borderLeft: `2px solid ${T.paperDark}` }}>
+                <div className="mt-3 ml-4 pl-3 space-y-2 overflow-y-auto" style={{ borderLeft: `2px solid ${T.paperDark}`, maxHeight: p.replies.length > 10 ? 320 : "none" }}>
                   {p.replies.map((r, idx) => (
                     <div key={idx}>
                       <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
                       <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                      {r.url && (
+                        isImage(r.url) ? (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="block mt-1.5">
+                            <img src={r.url} alt="Đính kèm" className="max-w-[160px] max-h-36 stamp-border" />
+                          </a>
+                        ) : (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all mt-1 ml-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                            <Paperclip size={11} /> Xem file đính kèm
+                          </a>
+                        )
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3402,9 +3717,22 @@ function BoardTab({ user, perm }) {
                     <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
                     <Btn onClick={() => reply(p.id)}>Gửi</Btn>
                   </div>
+                  <UploadField onUploaded={setReplyAttachUrl} />
+                  {replyAttachUrl && (
+                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                      {isImage(replyAttachUrl) ? (
+                        <img src={replyAttachUrl} alt="Đính kèm" className="max-w-[120px] max-h-24 stamp-border" />
+                      ) : (
+                        <a href={replyAttachUrl} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={11} /> Xem file vừa tải lên
+                        </a>
+                      )}
+                      <button onClick={() => setReplyAttachUrl("")} title="Bỏ đính kèm"><X size={13} style={{ color: T.red }} /></button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); }}>Trả lời</button>
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); setReplyAttachUrl(""); }}>Trả lời</button>
               )}
             </div>
           ))}
@@ -3775,6 +4103,7 @@ const TABS = [
   { id: "roster", label: "Quân số", icon: Users },
   { id: "study", label: "Lịch học", icon: CalendarDays },
   { id: "duty", label: "Lịch trực", icon: MapPin },
+  { id: "restLeave", label: "Lịch nghỉ", icon: CalendarDays },
   { id: "outing", label: "Đăng ký ra ngoài", icon: DoorOpen },
   { id: "attendance", label: "Điểm danh", icon: ClipboardCheck },
   { id: "docs", label: "Tài liệu", icon: FolderOpen },
@@ -3852,6 +4181,7 @@ export default function App() {
       case "home": return <AnnouncementsTab user={user} perm={perm} />;
       case "roster": return <RosterTab perm={perm} user={user} />;
       case "study": return <StudyScheduleTab user={user} perm={perm} />;
+      case "restLeave": return <WeekendOffTab user={user} perm={perm} />;
       case "duty": return <DutyScheduleTab user={user} perm={perm} />;
       case "outing": return <OutingTab user={user} perm={perm} />;
       case "attendance": return <AttendanceTab user={user} perm={perm} />;
