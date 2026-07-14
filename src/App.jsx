@@ -1001,6 +1001,56 @@ function RoleMultiSelect({ value, onChange, disabled, max = 3 }) {
   );
 }
 
+// Ô chọn tên trong Quân số dạng dropdown tuỳ biến — tự cuộn gọn khi danh sách dài hơn 6 dòng
+function RosterNameSelect({ value, options, onChange, placeholder = "— Chọn tên trong Quân số —" }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const current = options.find((o) => o.value === value);
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={inputCls}
+        style={{ ...inputStyle, textAlign: "left", cursor: "pointer" }}
+      >
+        {current ? current.label : placeholder}
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto stamp-border" style={{ background: "#fff" }}>
+          <div
+            className="px-3 py-1.5 text-xs f-body cursor-pointer"
+            style={{ borderBottom: `1px solid ${T.paperDark}`, color: T.inkSoft }}
+            onClick={() => { onChange(""); setOpen(false); }}
+          >
+            {placeholder}
+          </div>
+          {options.map((o, i) => (
+            <div
+              key={o.value + "-" + i}
+              className="px-3 py-1.5 text-xs f-body cursor-pointer"
+              style={{
+                borderBottom: `1px solid ${T.paperDark}`,
+                background: value === o.value ? "#DCE9FA" : "transparent",
+              }}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ TAB: QUÂN SỐ ============
    - Thêm/Xoá thành viên: Quản trị, Trung đội trưởng/phó, Cán bộ được gán quyền (perm.canManage).
    - Sửa thông tin từng người:
@@ -1947,6 +1997,9 @@ function DutyScheduleTab({ user, perm }) {
 function WeekendRestAppendix({ user, perm }) {
   const { items, setItems, loading } = useSharedList("weekendRest");
   const { items: rosterItems } = useSharedList("roster");
+  // File ký duyệt của lãnh đạo lưu Ở KHO RIÊNG (weekendApprovals), tách biệt hoàn toàn khỏi dữ liệu
+  // Danh sách trực (members) của từng đợt — mỗi bên tự thêm/sửa/xoá độc lập, không đụng vào nhau.
+  const approvals = useSharedList("weekendApprovals");
   const [form, setForm] = useState({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
@@ -1985,7 +2038,7 @@ function WeekendRestAppendix({ user, perm }) {
   const create = async () => {
     if (!form.fromDate || !form.toDate) { setWarn("Vui lòng nhập đủ Ngày bắt đầu trực và Ngày kết thúc trực trước khi lưu."); return; }
     setWarn("");
-    const newEntry = { id: Date.now(), ...form, by: user, members: [], approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" };
+    const newEntry = { id: Date.now(), ...form, by: user, members: [] };
     await setItems([newEntry, ...items]);
     setForm({ fromDate: "", fromTime: "17:00", toDate: "", toTime: "21:00", url: "", ghiChu: "" });
     setShowForm(false);
@@ -2044,7 +2097,7 @@ function WeekendRestAppendix({ user, perm }) {
           </div>
 
           {viewEntry && (
-            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} rosterItems={rosterItems} />
+            <WeekendEntryCard key={viewEntry.id} entry={viewEntry} entries={items} setEntries={setItems} perm={perm} user={user} onRemoveEntry={removeEntry} rosterItems={rosterItems} approvals={approvals} />
           )}
         </>
       )}
@@ -2052,13 +2105,21 @@ function WeekendRestAppendix({ user, perm }) {
   );
 }
 
-function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry, rosterItems }) {
+function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntry, rosterItems, approvals }) {
   const [showMForm, setShowMForm] = useState(false);
   const [mWarn, setMWarn] = useState("");
-  const [approvalUrlInput, setApprovalUrlInput] = useState(entry.approvalUrl || "");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
-  useEffect(() => { setApprovalUrlInput(entry.approvalUrl || ""); }, [entry.id, entry.approvalUrl]);
+  // File ký duyệt của lãnh đạo — dữ liệu độc lập, tra theo entryId trong kho riêng "weekendApprovals"
+  // (không còn nằm chung trong object đợt trực / Danh sách trực nữa). Vẫn đọc entry.approvalUrl cũ
+  // (nếu có, từ dữ liệu trước khi tách) làm phương án dự phòng để không mất dữ liệu đã lưu trước đó.
+  const approvalRecord = (approvals.items || []).find((a) => a.entryId === entry.id) || null;
+  const approvalUrl = approvalRecord?.url || entry.approvalUrl || "";
+  const approvalUploadedBy = approvalRecord?.uploadedBy || entry.approvalUploadedBy || "";
+  const approvalUploadedAt = approvalRecord?.uploadedAt || entry.approvalUploadedAt || "";
+  const [approvalUrlInput, setApprovalUrlInput] = useState(approvalUrl);
+
+  useEffect(() => { setApprovalUrlInput(approvalUrl); }, [entry.id, approvalUrl]);
 
   // Thêm người vào Danh sách trực: tick chọn (nhiều) người có sẵn trong Quân số — không nhập tay.
   // Thông tin Họ và tên / Năm sinh / Tiểu đội / SĐT được lấy tự động từ Quân số.
@@ -2112,16 +2173,17 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
     await setEntries(next);
     setEditingMemberId(null);
   };
-  // File ký duyệt của lãnh đạo cho riêng tuần/đợt trực này
+  // File ký duyệt của lãnh đạo cho riêng tuần/đợt trực này — lưu vào kho "weekendApprovals" riêng,
+  // hoàn toàn tách biệt khỏi dữ liệu Danh sách trực (members) của đợt trực.
   const saveApproval = async (url) => {
     setApprovalUrlInput(url);
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: url, approvalUploadedBy: user, approvalUploadedAt: new Date().toISOString() } : e));
-    await setEntries(next);
+    const rest = (approvals.items || []).filter((a) => a.entryId !== entry.id);
+    const record = { id: approvalRecord?.id || Date.now(), entryId: entry.id, url, uploadedBy: user, uploadedAt: new Date().toISOString() };
+    await approvals.setItems([...rest, record]);
   };
   const clearApproval = async () => {
     setApprovalUrlInput("");
-    const next = entries.map((e) => (e.id === entry.id ? { ...e, approvalUrl: "", approvalUploadedBy: "", approvalUploadedAt: "" } : e));
-    await setEntries(next);
+    await approvals.setItems((approvals.items || []).filter((a) => a.entryId !== entry.id));
   };
   const sortedMembers = [...(entry.members || [])].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
   const [selectedMemberId, setSelectedMemberId] = useState(null);
@@ -2198,19 +2260,19 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
           <Paperclip size={13} /> File ký duyệt của lãnh đạo (tuần này)
         </div>
-        {entry.approvalUrl ? (
+        {approvalUrl ? (
           <div>
-            {isImage(entry.approvalUrl) ? (
-              <a href={entry.approvalUrl} target="_blank" rel="noreferrer">
-                <img src={entry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+            {isImage(approvalUrl) ? (
+              <a href={approvalUrl} target="_blank" rel="noreferrer">
+                <img src={approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
               </a>
             ) : (
-              <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+              <a href={approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
                 <Paperclip size={12} /> Xem file đã ký duyệt
               </a>
             )}
             <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
-              Tải lên bởi {entry.approvalUploadedBy || "—"} lúc {entry.approvalUploadedAt ? new Date(entry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
+              Tải lên bởi {approvalUploadedBy || "—"} lúc {approvalUploadedAt ? new Date(approvalUploadedAt).toLocaleString("vi-VN") : "—"}
             </div>
             {perm.canManage && (
               <button onClick={clearApproval} className="f-mono text-[10.5px] underline mt-1" style={{ color: T.red }}>Xoá file đã ký duyệt</button>
@@ -2309,6 +2371,10 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
 function WeekendOffTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("weekendRest");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
+  // File ký duyệt của lãnh đạo ở TRANG NGHỈ dùng kho riêng "weekendOffApprovals" — độc lập hoàn toàn
+  // với file ký duyệt bên trang Trực ("weekendApprovals") và với Danh sách trực/nghỉ. Tự thêm/sửa/xoá
+  // riêng ở đây, không ảnh hưởng và không lấy chung nội dung với bên Trực.
+  const offApprovals = useSharedList("weekendOffApprovals");
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -2349,6 +2415,26 @@ function WeekendOffTab({ user, perm }) {
   const dutyNameSet = new Set((viewEntry?.members || []).map((m) => normalizeName(m.hoTen)));
   const restMembers = rosterItems.filter((r) => !dutyNameSet.has(normalizeName(r.name)));
   const sortedRestMembers = [...restMembers].sort((a, b) => Number(a.tieuDoi) - Number(b.tieuDoi));
+
+  const viewOffApproval = (offApprovals.items || []).find((a) => a.entryId === viewEntry?.id) || null;
+  const viewApprovalUrl = viewOffApproval?.url || "";
+  const viewApprovalUploadedBy = viewOffApproval?.uploadedBy || "";
+  const viewApprovalUploadedAt = viewOffApproval?.uploadedAt || "";
+  const [offApprovalUrlInput, setOffApprovalUrlInput] = useState(viewApprovalUrl);
+  useEffect(() => { setOffApprovalUrlInput(viewApprovalUrl); }, [viewEntry?.id, viewApprovalUrl]);
+
+  const saveOffApproval = async (url) => {
+    if (!viewEntry) return;
+    setOffApprovalUrlInput(url);
+    const rest = (offApprovals.items || []).filter((a) => a.entryId !== viewEntry.id);
+    const record = { id: viewOffApproval?.id || Date.now(), entryId: viewEntry.id, url, uploadedBy: user, uploadedAt: new Date().toISOString() };
+    await offApprovals.setItems([...rest, record]);
+  };
+  const clearOffApproval = async () => {
+    if (!viewEntry) return;
+    setOffApprovalUrlInput("");
+    await offApprovals.setItems((offApprovals.items || []).filter((a) => a.entryId !== viewEntry.id));
+  };
 
   const canApprove = perm.isAdmin || perm.isCommandRole;
   const setRestThe = async (rosterId, trangThai) => {
@@ -2413,23 +2499,35 @@ function WeekendOffTab({ user, perm }) {
                 <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
                   <Paperclip size={13} /> File ký duyệt của lãnh đạo (tuần này)
                 </div>
-                {viewEntry.approvalUrl ? (
+                {viewApprovalUrl ? (
                   <div>
-                    {isImage(viewEntry.approvalUrl) ? (
-                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer">
-                        <img src={viewEntry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+                    {isImage(viewApprovalUrl) ? (
+                      <a href={viewApprovalUrl} target="_blank" rel="noreferrer">
+                        <img src={viewApprovalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
                       </a>
                     ) : (
-                      <a href={viewEntry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                      <a href={viewApprovalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
                         <Paperclip size={12} /> Xem file đã ký duyệt
                       </a>
                     )}
                     <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
-                      Tải lên bởi {viewEntry.approvalUploadedBy || "—"} lúc {viewEntry.approvalUploadedAt ? new Date(viewEntry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
+                      Tải lên bởi {viewApprovalUploadedBy || "—"} lúc {viewApprovalUploadedAt ? new Date(viewApprovalUploadedAt).toLocaleString("vi-VN") : "—"}
                     </div>
+                    {canApprove && (
+                      <button onClick={clearOffApproval} className="f-mono text-[10.5px] underline mt-1" style={{ color: T.red }}>Xoá file đã ký duyệt</button>
+                    )}
                   </div>
                 ) : (
                   <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa có file ký duyệt của lãnh đạo cho tuần này.</div>
+                )}
+                {canApprove && (
+                  <div className="mt-2">
+                    <input className={inputCls} style={inputStyle} value={offApprovalUrlInput} onChange={(e) => setOffApprovalUrlInput(e.target.value)} placeholder="https://…" />
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <UploadField onUploaded={(url) => saveOffApproval(url)} />
+                      <Btn variant="outline" onClick={() => saveOffApproval(offApprovalUrlInput)}>Lưu link</Btn>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -2818,25 +2916,19 @@ function OutingTab({ user, perm }) {
             </div>
           )}
           <Field label="Họ và tên" required>
-            <select
-              className={inputCls}
-              style={inputStyle}
+            <RosterNameSelect
               value={form.name}
-              onChange={(e) => {
-                const chosen = roster.items.find((m) => m.name === e.target.value);
+              options={rosterSorted.map((m) => ({ value: m.name, label: `${m.name} (TĐ${m.tieuDoi || "—"})` }))}
+              onChange={(name) => {
+                const chosen = roster.items.find((m) => m.name === name);
                 setForm({
                   ...form,
-                  name: e.target.value,
+                  name,
                   namSinh: chosen ? yearFromDob(chosen.dob) : form.namSinh,
                   tieuDoi: chosen ? (chosen.tieuDoi || "1") : form.tieuDoi,
                 });
               }}
-            >
-              <option value="">— Chọn tên trong Quân số —</option>
-              {rosterSorted.map((m) => (
-                <option key={m.id} value={m.name}>{m.name} (TĐ{m.tieuDoi || "—"})</option>
-              ))}
-            </select>
+            />
           </Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={form.namSinh} onChange={(e) => setForm({ ...form, namSinh: e.target.value })} placeholder="VD: 2004" /></Field>
           <Field label="Tiểu đội">
@@ -3855,7 +3947,7 @@ function CommandChatTab({ user, perm }) {
 
 /* ============ TAB: PHÂN QUYỀN (chỉ quản trị) ============ */
 const ALL_DATA_KEYS = [
-  "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest",
+  "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest", "weekendApprovals", "weekendOffApprovals",
   "outings", "outingLock", "attendance", "docs", "scores",
   "fund", "fundConfig", "posts", "commandChat", "polls", "roster", "rosterLeaderInfo", "rosterSelfEntry", "permissions", "authConfig",
 ];
