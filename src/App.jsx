@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock, Eye, EyeOff } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock, Eye, EyeOff, Upload, FileSpreadsheet } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -1085,6 +1085,358 @@ function RosterNameSelect({ value, options, onChange, placeholder = "— Chọn 
        + Thành viên khác: chỉ sửa được thông tin của CHÍNH MÌNH (khi có sai sót cần điều chỉnh),
          và không được đổi Chức vụ / Tiểu đội của bản thân (những mục này do chỉ huy quyết định).
 */
+/* ============ NHẬP QUÂN SỐ TỪ ẢNH/TỆP ============
+   - Từ file Excel (.xlsx/.xls) hoặc CSV: đọc trực tiếp trong trình duyệt (không cần AI), người dùng
+     tự chọn cột nào ứng với thông tin nào (STT, Họ tên, Chức vụ...), tick chọn dòng cần lấy rồi xác nhận.
+   - Từ ảnh chụp danh sách: dùng AI đọc chữ (OCR) qua API riêng /api/ocr-roster (cần cấu hình
+     ANTHROPIC_API_KEY trên server — xem hướng dẫn hiện ngay trong khung nếu chưa cấu hình).
+*/
+const ROSTER_IMPORT_FIELDS = [
+  { key: "", label: "— Bỏ qua cột này —" },
+  { key: "stt", label: "STT" },
+  { key: "msv", label: "Mã số" },
+  { key: "name", label: "Họ và tên" },
+  { key: "role", label: "Chức vụ" },
+  { key: "tieuDoi", label: "Tiểu đội" },
+  { key: "dob", label: "Ngày sinh" },
+  { key: "phone", label: "SĐT" },
+];
+function guessRosterField(header) {
+  const h = String(header || "").toLowerCase();
+  if (/stt|số\s*thứ\s*tự/.test(h)) return "stt";
+  if (/mã\s*số|msv/.test(h)) return "msv";
+  if (/họ.*tên|^tên$|full\s*name|^name$/.test(h)) return "name";
+  if (/chức\s*vụ|role/.test(h)) return "role";
+  if (/tiểu\s*đội|squad/.test(h)) return "tieuDoi";
+  if (/ngày\s*sinh|năm\s*sinh|dob|birth/.test(h)) return "dob";
+  if (/sđt|điện\s*thoại|phone|sdt/.test(h)) return "phone";
+  return "";
+}
+// Chuẩn hoá ngày sinh về dạng yyyy-mm-dd (lưu trong Quân số) từ các định dạng phổ biến dd/mm/yyyy, d-m-yyyy...
+function normalizeDobInput(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  if (/^\d{4}$/.test(s)) return `${s}-01-01`;
+  return s;
+}
+// CSV parser đơn giản, có hỗ trợ field trong dấu ngoặc kép (chứa dấu phẩy/xuống dòng)
+function parseCSVText(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; } }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c === "\r") { /* bỏ qua */ }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((c) => String(c).trim() !== ""));
+}
+// Tải thư viện đọc file Excel (SheetJS) từ CDN khi cần dùng, chỉ tải một lần
+let _xlsxLoadPromise = null;
+function loadXLSXLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxLoadPromise) return _xlsxLoadPromise;
+  _xlsxLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("Không tải được thư viện đọc Excel — kiểm tra kết nối mạng."));
+    document.head.appendChild(script);
+  });
+  return _xlsxLoadPromise;
+}
+
+function RosterImportPanel({ existingItems, onConfirm, onClose }) {
+  const [srcMode, setSrcMode] = useState("file"); // "file" | "image"
+
+  // ---- Nguồn: file Excel/CSV ----
+  const [fileName, setFileName] = useState("");
+  const [rawRows, setRawRows] = useState([]); // mảng các mảng ô (kể cả dòng tiêu đề nếu có)
+  const [hasHeader, setHasHeader] = useState(true);
+  const [colMap, setColMap] = useState([]); // field key theo từng cột
+  const [fileErr, setFileErr] = useState("");
+  const [fileBusy, setFileBusy] = useState(false);
+
+  const handleFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setFileErr(""); setFileBusy(true);
+    try {
+      const isCsv = /\.csv$/i.test(file.name);
+      let rows = [];
+      if (isCsv) {
+        const text = await file.text();
+        rows = parseCSVText(text);
+      } else {
+        const XLSX = await loadXLSXLib();
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" })
+          .map((r) => r.map((c) => String(c ?? "")))
+          .filter((r) => r.some((c) => String(c).trim() !== ""));
+      }
+      if (rows.length === 0) { setFileErr("Không đọc được dữ liệu nào từ file này."); setFileBusy(false); return; }
+      const colCount = Math.max(...rows.map((r) => r.length));
+      const headerRow = rows[0] || [];
+      setColMap(Array.from({ length: colCount }, (_, i) => guessRosterField(headerRow[i])));
+      setRawRows(rows);
+      setFileName(file.name);
+      setSelectedRows({});
+    } catch (err) {
+      setFileErr(`Đọc file thất bại — ${err?.message || err}`);
+    }
+    setFileBusy(false);
+  };
+
+  const dataRows = hasHeader ? rawRows.slice(1) : rawRows;
+  const mappedFileRows = dataRows.map((r) => {
+    const o = { stt: "", msv: "", name: "", role: "", tieuDoi: "", dob: "", phone: "" };
+    colMap.forEach((key, i) => { if (key && r[i] !== undefined) o[key] = String(r[i]).trim(); });
+    if (o.dob) o.dob = normalizeDobInput(o.dob);
+    return o;
+  });
+
+  // ---- Nguồn: ảnh chụp (OCR - AI) ----
+  const [imageUrl, setImageUrl] = useState("");
+  const [ocrRows, setOcrRows] = useState(null); // null = chưa đọc; [] = đọc rồi nhưng rỗng
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrErr, setOcrErr] = useState("");
+  const [ocrNotConfigured, setOcrNotConfigured] = useState(false);
+
+  const runOCR = async () => {
+    if (!imageUrl) return;
+    setOcrBusy(true); setOcrErr(""); setOcrNotConfigured(false); setOcrRows(null);
+    try {
+      const res = await fetch("/api/ocr-roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl }),
+      });
+      if (res.status === 404) { setOcrNotConfigured(true); setOcrBusy(false); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        if (data?.notConfigured) setOcrNotConfigured(true);
+        else setOcrErr(data?.error || "Đọc ảnh thất bại, thử lại.");
+        setOcrBusy(false);
+        return;
+      }
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      setOcrRows(rows.map((r) => ({
+        stt: String(r.stt ?? "").trim(),
+        msv: String(r.msv ?? "").trim(),
+        name: String(r.name ?? "").trim(),
+        role: String(r.role ?? "").trim(),
+        tieuDoi: String(r.tieuDoi ?? "").trim(),
+        dob: normalizeDobInput(r.dob),
+        phone: String(r.phone ?? "").trim(),
+      })));
+      setSelectedRows({});
+    } catch (err) {
+      setOcrNotConfigured(true);
+    }
+    setOcrBusy(false);
+  };
+
+  const editOcrRow = (idx, key, value) => {
+    setOcrRows((rows) => rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  };
+
+  // ---- Dòng đang xem (tuỳ theo nguồn) + tick chọn dòng cần lấy ----
+  const previewRows = srcMode === "file" ? mappedFileRows : (ocrRows || []);
+  const [selectedRows, setSelectedRows] = useState({});
+  const existingNameSet = new Set(existingItems.map((m) => normalizeName(m.name)));
+  const isDup = (name) => name && existingNameSet.has(normalizeName(name));
+
+  useEffect(() => {
+    // Mặc định tick tất cả dòng có Họ tên, trừ dòng trùng tên đã có sẵn trong Quân số
+    const next = {};
+    previewRows.forEach((r, i) => { next[i] = Boolean(r.name) && !isDup(r.name); });
+    setSelectedRows(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappedFileRows.length, ocrRows]);
+
+  const toggleRow = (i) => setSelectedRows((s) => ({ ...s, [i]: !s[i] }));
+  const checkedCount = Object.values(selectedRows).filter(Boolean).length;
+
+  const confirmImport = () => {
+    const chosen = previewRows.filter((r, i) => selectedRows[i] && r.name);
+    if (chosen.length === 0) return;
+    onConfirm(chosen.map((r, idx) => ({
+      id: Date.now() + idx,
+      stt: r.stt || "",
+      msv: r.msv || "",
+      name: r.name,
+      role: r.role || "Thành viên",
+      tieuDoi: r.tieuDoi || "1",
+      phone: r.phone || "",
+      dob: r.dob || "",
+    })));
+  };
+
+  return (
+    <div className="stamp-border p-3 mb-3" style={{ background: "#fff" }}>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <span className="f-display text-[11.5px] uppercase tracking-wider" style={{ color: T.amberDark }}>
+          Nhập Quân số từ ảnh / tệp
+        </span>
+        <button onClick={onClose} title="Đóng"><X size={16} style={{ color: T.inkSoft }} /></button>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <Btn size="sm" variant={srcMode === "file" ? "solid" : "outline"} onClick={() => setSrcMode("file")}>
+          <FileSpreadsheet size={13} /> Từ file Excel/CSV
+        </Btn>
+        <Btn size="sm" variant={srcMode === "image" ? "solid" : "outline"} onClick={() => setSrcMode("image")}>
+          <ImageIcon size={13} /> Từ ảnh chụp (AI đọc chữ)
+        </Btn>
+      </div>
+
+      {srcMode === "file" ? (
+        <div>
+          <p className="f-body text-[11px] italic mb-2" style={{ color: T.inkSoft }}>
+            Chọn file Excel (.xlsx/.xls) hoặc CSV — đọc trực tiếp trong trình duyệt, không cần AI, chính xác 100%
+            theo đúng dữ liệu trong file. Sau khi đọc xong, bạn chọn cột nào ứng với thông tin nào rồi tick dòng cần lấy.
+          </p>
+          <label className="f-display text-[11px] uppercase tracking-wider px-3 py-1.5 inline-flex items-center gap-1.5 cursor-pointer btn-press" style={{ border: `1px solid ${T.green}`, color: T.green }}>
+            {fileBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            {fileBusy ? "Đang đọc file…" : "Chọn file từ máy"}
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFilePicked} />
+          </label>
+          {fileName && <span className="f-body text-[11px] ml-2" style={{ color: T.inkSoft }}>Đã chọn: {fileName}</span>}
+          {fileErr && <div className="f-body text-xs mt-2" style={{ color: T.red }}>{fileErr}</div>}
+
+          {rawRows.length > 0 && (
+            <>
+              <label className="flex items-center gap-2 mt-3 f-body text-xs cursor-pointer" style={{ color: T.ink }}>
+                <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
+                Dòng đầu tiên là tiêu đề cột (không lấy làm dữ liệu)
+              </label>
+
+              <div className="f-mono text-[10.5px] uppercase tracking-widest mt-3 mb-1" style={{ color: T.amberDark }}>Chọn cột nào ứng với thông tin nào</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-3">
+                {colMap.map((val, i) => (
+                  <div key={i}>
+                    <div className="f-body text-[10px] truncate mb-0.5" style={{ color: T.inkSoft }} title={rawRows[0]?.[i]}>
+                      Cột {i + 1}{hasHeader && rawRows[0]?.[i] ? `: "${rawRows[0][i]}"` : ""}
+                    </div>
+                    <select
+                      className={inputCls}
+                      style={{ ...inputStyle, fontSize: "11.5px", padding: "4px 6px" }}
+                      value={val}
+                      onChange={(e) => setColMap((cm) => cm.map((v, ci) => (ci === i ? e.target.value : v)))}
+                    >
+                      {ROSTER_IMPORT_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="f-body text-[11px] italic mb-2" style={{ color: T.inkSoft }}>
+            Tải lên ảnh chụp danh sách (chữ in hoặc viết tay) — hệ thống dùng AI đọc chữ (OCR) để lấy thông tin.
+            Tính năng này cần cấu hình API riêng trên máy chủ; nếu chưa cấu hình, hệ thống sẽ báo rõ bên dưới.
+          </p>
+          <UploadField onUploaded={(url) => { setImageUrl(url); setOcrRows(null); setOcrErr(""); setOcrNotConfigured(false); }} />
+          {imageUrl && (
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              <img src={imageUrl} alt="Ảnh danh sách" className="w-16 h-16 object-cover stamp-border" />
+              <Btn size="sm" onClick={runOCR} disabled={ocrBusy}>
+                {ocrBusy ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+                {ocrBusy ? "Đang đọc ảnh…" : "Đọc dữ liệu từ ảnh"}
+              </Btn>
+            </div>
+          )}
+          {ocrNotConfigured && (
+            <div className="f-body text-xs mt-3 p-2.5" style={{ background: "#F7E3E6", color: T.red, borderLeft: `3px solid ${T.red}` }}>
+              Chưa cấu hình tính năng đọc ảnh (OCR) trên máy chủ. Cần thêm file API <code>api/ocr-roster.js</code> và
+              biến môi trường <code>ANTHROPIC_API_KEY</code> trong cài đặt dự án trên Vercel rồi triển khai lại.
+              Trong lúc chờ cấu hình, bạn có thể dùng cách "Từ file Excel/CSV" ở trên — làm được ngay, không cần AI.
+            </div>
+          )}
+          {ocrErr && <div className="f-body text-xs mt-2" style={{ color: T.red }}>{ocrErr}</div>}
+        </div>
+      )}
+
+      {previewRows.length > 0 && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-2 mt-4 mb-1.5">
+            <span className="f-mono text-[11px] uppercase tracking-widest" style={{ color: T.amberDark }}>
+              Xem trước — tick chọn dòng cần lấy ({checkedCount}/{previewRows.length})
+            </span>
+          </div>
+          <div className="overflow-x-auto overflow-y-auto stamp-border" style={{ background: "#fff", maxHeight: 320 }}>
+            <table className="w-full text-xs f-body table-lines table-grid">
+              <thead>
+                <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                  <th className="px-2 py-1.5 w-8"></th>
+                  <th className="text-left px-2 py-1.5">STT</th>
+                  <th className="text-left px-2 py-1.5">Mã số</th>
+                  <th className="text-left px-2 py-1.5 min-w-[110px]">Họ và tên</th>
+                  <th className="text-left px-2 py-1.5">Chức vụ</th>
+                  <th className="text-left px-2 py-1.5">Tiểu đội</th>
+                  <th className="text-left px-2 py-1.5">Ngày sinh</th>
+                  <th className="text-left px-2 py-1.5">SĐT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((r, i) => (
+                  <tr key={i} style={{ background: i % 2 ? T.paper : "#fff" }}>
+                    <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={Boolean(selectedRows[i])} onChange={() => toggleRow(i)} /></td>
+                    {srcMode === "image" ? (
+                      <>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", width: 44 }} value={r.stt} onChange={(e) => editOcrRow(i, "stt", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", width: 60 }} value={r.msv} onChange={(e) => editOcrRow(i, "msv", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", minWidth: 110 }} value={r.name} onChange={(e) => editOcrRow(i, "name", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", minWidth: 90 }} value={r.role} onChange={(e) => editOcrRow(i, "role", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", width: 44 }} value={r.tieuDoi} onChange={(e) => editOcrRow(i, "tieuDoi", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", width: 90 }} value={r.dob} onChange={(e) => editOcrRow(i, "dob", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className={inputCls} style={{ ...inputStyle, fontSize: "11px", padding: "3px 5px", width: 90 }} value={r.phone} onChange={(e) => editOcrRow(i, "phone", e.target.value)} /></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1.5 f-mono">{r.stt || "—"}</td>
+                        <td className="px-2 py-1.5 f-mono">{r.msv || "—"}</td>
+                        <td className="px-2 py-1.5 font-medium">
+                          {r.name || <span className="italic" style={{ color: T.inkSoft }}>(thiếu tên — sẽ bị bỏ qua)</span>}
+                          {isDup(r.name) && <span className="ml-1.5 f-mono text-[9.5px]" style={{ color: T.red }}>· Trùng tên đã có</span>}
+                        </td>
+                        <td className="px-2 py-1.5">{r.role || "—"}</td>
+                        <td className="px-2 py-1.5 f-mono">{r.tieuDoi || "—"}</td>
+                        <td className="px-2 py-1.5 f-mono">{formatDob(r.dob) || "—"}</td>
+                        <td className="px-2 py-1.5 f-mono">{r.phone || "—"}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <Btn onClick={confirmImport} disabled={checkedCount === 0}>
+              <CheckCircle2 size={14} /> Xác nhận, thêm {checkedCount} người vào Quân số
+            </Btn>
+            <Btn variant="outline" onClick={onClose}>Huỷ</Btn>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
   const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
@@ -1096,6 +1448,7 @@ function RosterTab({ perm, user }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedSquad, setSelectedSquad] = useState("1");
+  const [showImport, setShowImport] = useState(false);
 
   // Ô riêng ghi thông tin liên hệ Trung đội trưởng (Họ và tên, SĐT) — chỉ huy tự tuỳ chỉnh nhập
   const { value: leaderInfo, setValue: setLeaderInfo, loading: leaderLoading } = useSingleDoc("rosterLeaderInfo", {
@@ -1216,7 +1569,30 @@ function RosterTab({ perm, user }) {
   return (
     <div>
       <SectionHeader compact icon={Users} eyebrow={`Quân số: ${items.length}`} title="Danh sách trung đội"
-        action={canAddMember && <Btn size="sm" onClick={() => (showForm ? setShowForm(false) : openForm())}><Plus size={14} /> {perm.canManage ? "Thêm thành viên" : "Thêm thông tin của tôi"}</Btn>} />
+        action={
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {canAddMember && (
+              <Btn size="sm" variant="outline" onClick={() => setShowImport((s) => !s)}>
+                <Upload size={14} /> Nhập từ ảnh/tệp
+              </Btn>
+            )}
+            {canAddMember && (
+              <Btn size="sm" onClick={() => (showForm ? setShowForm(false) : openForm())}><Plus size={14} /> {perm.canManage ? "Thêm thành viên" : "Thêm thông tin của tôi"}</Btn>
+            )}
+          </div>
+        } />
+
+      {canAddMember && showImport && (
+        <RosterImportPanel
+          existingItems={items}
+          onClose={() => setShowImport(false)}
+          onConfirm={async (newRows) => {
+            const filtered = newRows.filter((r) => !items.some((m) => normalizeName(m.name) === normalizeName(r.name)));
+            await setItems([...items, ...filtered]);
+            setShowImport(false);
+          }}
+        />
+      )}
 
       {/* ---- Bật/tắt cho phép thành viên tự nhập thông tin của mình ---- */}
       {canEditAll && (
