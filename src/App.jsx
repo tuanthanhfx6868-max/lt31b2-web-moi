@@ -2077,6 +2077,15 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
   const [mWarn, setMWarn] = useState("");
   const [approvalUrlInput, setApprovalUrlInput] = useState(entry.approvalUrl || "");
   const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
+  const getFileName = (u) => {
+    try {
+      const clean = (u || "").split("?")[0];
+      const last = clean.split("/").pop();
+      return decodeURIComponent(last) || "Tệp đính kèm";
+    } catch (e) {
+      return "Tệp đính kèm";
+    }
+  };
 
   useEffect(() => { setApprovalUrlInput(entry.approvalUrl || ""); }, [entry.id, entry.approvalUrl]);
 
@@ -2200,15 +2209,9 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         </div>
         {entry.approvalUrl ? (
           <div>
-            {isImage(entry.approvalUrl) ? (
-              <a href={entry.approvalUrl} target="_blank" rel="noreferrer">
-                <img src={entry.approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
-              </a>
-            ) : (
-              <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
-                <Paperclip size={12} /> Xem file đã ký duyệt
-              </a>
-            )}
+            <a href={entry.approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1.5" style={{ color: T.green }}>
+              <Paperclip size={12} /> {getFileName(entry.approvalUrl)}
+            </a>
             <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
               Tải lên bởi {entry.approvalUploadedBy || "—"} lúc {entry.approvalUploadedAt ? new Date(entry.approvalUploadedAt).toLocaleString("vi-VN") : "—"}
             </div>
