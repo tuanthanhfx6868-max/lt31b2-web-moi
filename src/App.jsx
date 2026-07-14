@@ -2545,6 +2545,8 @@ function TheTrangThaiBadge({ o, canAct, canApprove, setThe }) {
 
 function OutingTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("outings");
+  const roster = useSharedList("roster");
+  const rosterSorted = [...roster.items].sort((a, b) => (Number(a.tieuDoi) - Number(b.tieuDoi)) || String(a.name).localeCompare(String(b.name), "vi"));
   const lock = useOutingLock();
   const today = useLiveToday();
   const [viewDate, setViewDate] = useState(today);
@@ -2806,7 +2808,27 @@ function OutingTab({ user, perm }) {
               Bạn thêm trực tiếp nên đăng ký này sẽ tự động ở trạng thái "Đã duyệt".
             </div>
           )}
-          <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Họ và tên" required>
+            <select
+              className={inputCls}
+              style={inputStyle}
+              value={form.name}
+              onChange={(e) => {
+                const chosen = roster.items.find((m) => m.name === e.target.value);
+                setForm({
+                  ...form,
+                  name: e.target.value,
+                  namSinh: chosen ? yearFromDob(chosen.dob) : form.namSinh,
+                  tieuDoi: chosen ? (chosen.tieuDoi || "1") : form.tieuDoi,
+                });
+              }}
+            >
+              <option value="">— Chọn tên trong Quân số —</option>
+              {rosterSorted.map((m) => (
+                <option key={m.id} value={m.name}>{m.name} (TĐ{m.tieuDoi || "—"})</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Năm sinh"><input className={inputCls} style={inputStyle} value={form.namSinh} onChange={(e) => setForm({ ...form, namSinh: e.target.value })} placeholder="VD: 2004" /></Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
