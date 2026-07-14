@@ -3093,12 +3093,29 @@ function AttendanceTab({ user, perm }) {
   const summary = STATUSES.map((s) => ({ status: s, count: dayRecords.filter((r) => r.status === s).length }));
   const chuaDiemDanh = Math.max(0, total - dayRecords.length);
 
-  const stats = roster.items.map((m) => {
-    const recs = items.filter((r) => r.memberId === m.id);
-    const present = recs.filter((r) => r.status === "Có mặt").length;
-    const pct = recs.length ? Math.round((present / recs.length) * 100) : null;
-    return { ...m, pct, total: recs.length };
-  });
+  const diligenceNotes = useSharedList("attendanceNotes");
+  const diligenceNoteFor = (memberId) => diligenceNotes.items.find((n) => n.memberId === memberId)?.note || "";
+  const [editingStatNoteId, setEditingStatNoteId] = useState(null);
+  const [statNoteDraft, setStatNoteDraft] = useState("");
+  const startEditStatNote = (m) => {
+    setEditingStatNoteId(m.id);
+    setStatNoteDraft(diligenceNoteFor(m.id));
+  };
+  const saveStatNote = async (m) => {
+    const rest = (diligenceNotes.items || []).filter((n) => n.memberId !== m.id);
+    const record = diligenceNotes.items.find((n) => n.memberId === m.id);
+    await diligenceNotes.setItems([...rest, { id: record?.id || Date.now(), memberId: m.id, note: statNoteDraft }]);
+    setEditingStatNoteId(null);
+  };
+
+  const stats = [...roster.items]
+    .map((m) => {
+      const recs = items.filter((r) => r.memberId === m.id);
+      const present = recs.filter((r) => r.status === "Có mặt").length;
+      const pct = recs.length ? Math.round((present / recs.length) * 100) : null;
+      return { ...m, pct, total: recs.length };
+    })
+    .sort((a, b) => b.total - a.total || Number(a.stt || 9999) - Number(b.stt || 9999));
 
   return (
     <div>
@@ -3213,20 +3230,52 @@ function AttendanceTab({ user, perm }) {
             <table className="w-full text-xs f-body table-lines table-grid">
               <thead>
                 <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
-                  <th className="text-left px-2.5 py-1.5 w-8">STT</th><th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
+                  <th className="text-left px-2.5 py-1.5 w-8">STT</th><th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th><th className="text-left px-2.5 py-1.5 min-w-[160px]">Ghi chú</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.map((m, i) => (
-                  <tr key={m.id} onClick={() => setSelectedStatId((s) => (s === m.id ? null : m.id))} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedStatId === m.id)}>
-                    <td className="px-2.5 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
-                    <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
-                    <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
-                    <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
-                      {m.pct === null ? "—" : `${m.pct}%`}
-                    </td>
-                  </tr>
-                ))}
+                {stats.map((m, i) => {
+                  const editingStat = editingStatNoteId === m.id;
+                  return (
+                    <React.Fragment key={m.id}>
+                      <tr onClick={() => setSelectedStatId((s) => (s === m.id ? null : m.id))} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedStatId === m.id)}>
+                        <td className="px-2.5 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
+                        <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
+                        <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
+                        <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
+                          {m.pct === null ? "—" : `${m.pct}%`}
+                        </td>
+                        <td className="px-2.5 py-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="f-body text-[11px]" style={{ color: T.inkSoft }}>{diligenceNoteFor(m.id) || "—"}</span>
+                            {canMarkAll && (
+                              <button onClick={(e) => { e.stopPropagation(); editingStat ? setEditingStatNoteId(null) : startEditStatNote(m); }} title="Sửa ghi chú">
+                                <Pencil size={12} style={{ color: T.green }} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {editingStat && (
+                        <tr style={{ background: T.paper }} onClick={(e) => e.stopPropagation()}>
+                          <td colSpan={5} className="px-2.5 py-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                className={inputCls}
+                                style={{ ...inputStyle, fontSize: "11px", padding: "4px 8px", maxWidth: 320 }}
+                                placeholder="Ghi chú chuyên cần (VD: nghỉ ốm dài ngày, đã báo phép...)"
+                                value={statNoteDraft}
+                                onChange={(e) => setStatNoteDraft(e.target.value)}
+                              />
+                              <Btn size="sm" onClick={() => saveStatNote(m)}>Lưu</Btn>
+                              <Btn size="sm" variant="outline" onClick={() => setEditingStatNoteId(null)}>Huỷ</Btn>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -3982,7 +4031,7 @@ function CommandChatTab({ user, perm }) {
 /* ============ TAB: PHÂN QUYỀN (chỉ quản trị) ============ */
 const ALL_DATA_KEYS = [
   "announcements", "schedule", "studyAppendix", "checkpoints", "weekendRest", "weekendApprovals", "weekendOffApprovals",
-  "outings", "outingLock", "attendance", "docs", "scores",
+  "outings", "outingLock", "attendance", "attendanceNotes", "docs", "scores",
   "fund", "fundConfig", "posts", "commandChat", "polls", "roster", "rosterLeaderInfo", "rosterSelfEntry", "permissions", "authConfig",
 ];
 
