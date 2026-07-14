@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock, Eye, EyeOff } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -602,6 +602,33 @@ function Field({ label, children, required }) {
 }
 const inputStyle = { background: "#fff", border: `1px solid #C9BFA5`, color: T.ink };
 const inputCls = "f-body w-full px-3 py-2 outline-none text-sm rounded-sm input-plain";
+
+// Ô nhập mật khẩu có nút con mắt để ẩn/hiện nội dung — mặc định ẩn (dạng dấu chấm) để bảo mật,
+// bấm vào mắt để xem lại mật khẩu vừa nhập trước khi lưu.
+function PasswordInput({ value, onChange, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={show ? "text" : "password"}
+        className={inputCls}
+        style={{ ...inputStyle, paddingRight: 36 }}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        className="absolute right-2 top-1/2 -translate-y-1/2"
+        style={{ color: T.inkSoft }}
+        title={show ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+      >
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
 
 /* ============ CẢNH BÁO THIẾU TRƯỜNG BẮT BUỘC (hiện ngay trong form khi bấm Lưu mà chưa nhập đủ) ============ */
 function FormWarning({ message }) {
@@ -4093,10 +4120,10 @@ function PasswordTab({ user, perm }) {
           </p>
           <FormWarning message={warn} />
           <Field label="Mật khẩu chung trung đội (dùng để đăng nhập thường)" required>
-            <input className={inputCls} style={inputStyle} value={unitPw} onChange={(e) => setUnitPw(e.target.value)} />
+            <PasswordInput value={unitPw} onChange={(e) => setUnitPw(e.target.value)} />
           </Field>
           <Field label="Mật khẩu quản trị (đăng nhập được toàn quyền)" required>
-            <input className={inputCls} style={inputStyle} value={adminPw} onChange={(e) => setAdminPw(e.target.value)} />
+            <PasswordInput value={adminPw} onChange={(e) => setAdminPw(e.target.value)} />
           </Field>
           <Btn onClick={saveAdmin} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
           {status && <div className="f-body text-xs mt-3" style={{ color: T.green }}>{status}</div>}
@@ -4109,7 +4136,7 @@ function PasswordTab({ user, perm }) {
           </p>
           <FormWarning message={warn} />
           <Field label={`Mật khẩu đăng nhập riêng của bạn (${user})`} required>
-            <input className={inputCls} style={inputStyle} value={ownPw} onChange={(e) => setOwnPw(e.target.value)} />
+            <PasswordInput value={ownPw} onChange={(e) => setOwnPw(e.target.value)} />
           </Field>
           <Btn onClick={saveOwn} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
           {status && <div className="f-body text-xs mt-3" style={{ color: T.green }}>{status}</div>}
