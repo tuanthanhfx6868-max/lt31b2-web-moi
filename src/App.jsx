@@ -947,7 +947,7 @@ const ROSTER_ROLE_OPTIONS = [
   "Bí thư chi bộ", "Phó bí thư chi bộ",
   "Chi uỷ viên chi bộ", "Thư ký chi bộ",
   "Bí thư chi đoàn", "Phó bí thư chi đoàn",
-  "Uỷ viên chi đoàn", "Cán bộ",
+  "Uỷ viên chi đoàn", "Thành viên",
 ];
 // Chức vụ có thể gồm nhiều chức danh, lưu dạng chuỗi phân tách bởi dấu phẩy (VD: "Tiểu đội trưởng, Bí thư chi đoàn")
 function roleList(roleStr) {
@@ -970,7 +970,7 @@ function RoleMultiSelect({ value, onChange, disabled, max = 3 }) {
     let next;
     if (selected.includes(r)) next = selected.filter((x) => x !== r);
     else { if (selected.length >= max) return; next = [...selected, r]; }
-    onChange(next.length ? next.join(", ") : "Cán bộ");
+    onChange(next.length ? next.join(", ") : "Thành viên");
   };
   return (
     <div className="relative">
@@ -1010,7 +1010,7 @@ function RoleMultiSelect({ value, onChange, disabled, max = 3 }) {
 */
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
-  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1051,8 +1051,8 @@ function RosterTab({ perm, user }) {
   const openForm = () => {
     setForm(
       canSelfAdd
-        ? { stt: "", msv: "", name: user, role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
-        : { stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
+        ? { stt: "", msv: "", name: user, role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
+        : { stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
     );
     setWarn("");
     setShowForm(true);
@@ -1064,11 +1064,15 @@ function RosterTab({ perm, user }) {
       !String(form.stt).trim() || !form.name.trim() || !form.role.trim() ||
       !form.tieuDoi.trim() || !form.phone.trim() || !form.dob.trim();
     if (missing) { setWarn("Bạn chưa nhập gì — vui lòng điền đầy đủ các mục có dấu * trước khi lưu."); return; }
-    setWarn("");
     // Thành viên tự nhập (không có quyền quản lý) chỉ được thêm đúng thông tin của chính mình
     const finalForm = perm.canManage ? form : { ...form, name: user };
+    if (items.some((m) => normalizeName(m.name) === normalizeName(finalForm.name))) {
+      setWarn(`Thành viên "${finalForm.name}" đã có tên trong danh sách — không thể lưu trùng.`);
+      return;
+    }
+    setWarn("");
     await setItems([...items, { id: Date.now(), ...finalForm }]);
-    setForm({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+    setForm({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -1080,7 +1084,7 @@ function RosterTab({ perm, user }) {
 
   const startEdit = (m) => {
     setEditingId(m.id);
-    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
+    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Thành viên", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
