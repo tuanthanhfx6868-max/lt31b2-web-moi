@@ -3030,7 +3030,8 @@ function AttendanceTab({ user, perm }) {
   // Chỉ Quản trị, Trung đội trưởng, Trung đội phó được điểm danh dùm cả trung đội.
   // Tài khoản thành viên khác chỉ thấy và điểm danh được đúng mục của chính mình.
   const canMarkAll = perm.isAdmin || perm.isCommandRole;
-  const markableRoster = canMarkAll ? roster.items : roster.items.filter((m) => perm.isOwner(m.name));
+  const markableRoster = [...(canMarkAll ? roster.items : roster.items.filter((m) => perm.isOwner(m.name)))]
+    .sort((a, b) => Number(a.stt || 9999) - Number(b.stt || 9999));
 
   const recordFor = (memberId) => items.find((r) => r.date === date && r.memberId === memberId);
 
@@ -3103,7 +3104,7 @@ function AttendanceTab({ user, perm }) {
       ) : markableRoster.length === 0 ? (
         <EmptyState text="Không tìm thấy tên của bạn trong danh sách quân số — liên hệ chỉ huy để được thêm vào Quân số." />
       ) : (
-        <div className="overflow-x-auto overflow-y-auto mb-8 stamp-border" style={{ background: "#fff", maxHeight: 460 }}>
+        <div className="overflow-x-auto overflow-y-auto mb-8 stamp-border" style={{ background: "#fff", maxHeight: 545 }}>
           <table className="w-full text-xs f-body table-lines table-grid">
             <thead>
               <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
