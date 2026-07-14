@@ -3656,7 +3656,7 @@ function BoardTab({ user, perm }) {
               <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
 
               {p.replies.length > 0 && (
-                <div className="mt-3 ml-4 pl-3 space-y-2" style={{ borderLeft: `2px solid ${T.paperDark}` }}>
+                <div className="mt-3 ml-4 pl-3 space-y-2 overflow-y-auto" style={{ borderLeft: `2px solid ${T.paperDark}`, maxHeight: p.replies.length > 10 ? 320 : "none" }}>
                   {p.replies.map((r, idx) => (
                     <div key={idx}>
                       <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
