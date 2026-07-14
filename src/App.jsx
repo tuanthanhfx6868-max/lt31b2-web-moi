@@ -3162,8 +3162,6 @@ function OutingTab({ user, perm }) {
   const removeApprovalPhoto = async () => {
     await approvalPhoto.save({ url: "", uploadedBy: "", uploadedAt: "" });
   };
-  const [approvalPhotoUrlInput, setApprovalPhotoUrlInput] = useState(approvalPhoto.data.url || "");
-  useEffect(() => { setApprovalPhotoUrlInput(approvalPhoto.data.url || ""); }, [viewDate, approvalPhoto.data.url]);
 
   const startEdit = (o) => {
     setEditingId(o.id);
@@ -3371,42 +3369,33 @@ function OutingTab({ user, perm }) {
             )}
           </div>
 
-          <div className="mt-1 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
-            <div className="f-mono text-[11px] uppercase tracking-widest flex items-center gap-1.5 mb-2" style={{ color: T.amberDark }}>
+          <div>
+            <div className="f-display text-xs uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: T.amberDark }}>
               <Paperclip size={13} /> Ảnh danh sách đã ký duyệt (lãnh đạo)
             </div>
             {approvalPhoto.loading ? <LoadingRow /> : approvalPhoto.data.url ? (
-              <div>
-                {isImage(approvalPhoto.data.url) ? (
-                  <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
-                    <img src={approvalPhoto.data.url} alt="Đã ký duyệt" className="w-12 h-12 object-cover stamp-border" />
-                    <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
-                      <Paperclip size={12} /> Xem ảnh đã ký duyệt
-                    </span>
-                  </a>
-                ) : (
-                  <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
-                    <Paperclip size={12} /> Xem file đã ký duyệt
-                  </a>
-                )}
-                <div className="f-body text-[11px] mt-1" style={{ color: T.inkSoft }}>
+              <div className="stamp-border p-2.5" style={{ background: "#fff" }}>
+                <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer">
+                  <img src={approvalPhoto.data.url} alt="Danh sách ra ngoài đã ký duyệt" className="max-w-full md:max-w-xs" style={{ border: `1px solid ${T.paperDark}` }} />
+                </a>
+                <div className="f-mono text-[9px] mt-1.5" style={{ color: T.inkSoft }}>
                   Tải lên bởi {approvalPhoto.data.uploadedBy || "—"} lúc {approvalPhoto.data.uploadedAt ? new Date(approvalPhoto.data.uploadedAt).toLocaleString("vi-VN") : "—"}
                 </div>
                 {canApprove && (
-                  <button onClick={removeApprovalPhoto} className="f-mono text-[10.5px] underline mt-1" style={{ color: T.red }}>Xoá file đã ký duyệt</button>
+                  <button onClick={removeApprovalPhoto} className="f-display text-[10px] uppercase tracking-wider mt-1.5 flex items-center gap-1" style={{ color: T.red }}>
+                    <Trash2 size={11} /> Xoá ảnh, tải lại
+                  </button>
                 )}
               </div>
-            ) : (
-              <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa có ảnh danh sách ký duyệt cho ngày {new Date(viewDate).toLocaleDateString("vi-VN")}.</div>
-            )}
-            {canApprove && (
-              <div className="mt-2">
-                <input className={inputCls} style={inputStyle} value={approvalPhotoUrlInput} onChange={(e) => setApprovalPhotoUrlInput(e.target.value)} placeholder="https://…" />
-                <div className="flex items-center gap-2 mt-1.5">
-                  <UploadField onUploaded={(url) => saveApprovalPhoto(url)} />
-                  <Btn variant="outline" onClick={() => saveApprovalPhoto(approvalPhotoUrlInput)}>Lưu link</Btn>
-                </div>
+            ) : canApprove ? (
+              <div className="stamp-border p-2.5" style={{ background: "#fff" }}>
+                <p className="f-body text-[10.5px] mb-1 leading-snug" style={{ color: T.inkSoft }}>
+                  Chụp/tải ảnh tờ danh sách giấy đã có chữ ký duyệt của lãnh đạo cho ngày {new Date(viewDate).toLocaleDateString("vi-VN")}, để lưu làm bằng chứng đối chiếu.
+                </p>
+                <UploadField onUploaded={saveApprovalPhoto} />
               </div>
+            ) : (
+              <EmptyState text="Chưa có ảnh danh sách ký duyệt cho ngày này." />
             )}
           </div>
 
@@ -3863,9 +3852,9 @@ function FundTab({ user, perm }) {
       </div>
 
       {/* ---- Thông tin thủ quỹ ---- */}
-      <div className="mt-1 p-3 mb-5" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-          <span className="f-mono text-[11px] uppercase tracking-widest" style={{ color: T.amberDark }}>Thủ quỹ trung đội</span>
+      <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <span className="f-display text-sm uppercase tracking-wider" style={{ color: T.amberDark }}>Thủ quỹ trung đội</span>
           {perm.canManage && (
             <Btn variant="outline" onClick={() => setShowCfgForm((s) => !s)}>
               <Users size={14} /> {fundConfig.treasurerName ? "Đổi thủ quỹ" : "Chỉ định thủ quỹ"}
@@ -3874,7 +3863,7 @@ function FundTab({ user, perm }) {
         </div>
 
         {perm.canManage && showCfgForm && (
-          <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-2.5 p-3" style={{ background: "#fff", border: `1px solid ${T.paperDark}` }}>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 p-3" style={{ background: T.paper, border: `1px solid ${T.paperDark}` }}>
             <div className="md:col-span-2">
               <Field label="Họ và tên thủ quỹ (chỉ huy điền — đúng tên đăng nhập của người đó)">
                 <input className={inputCls} style={inputStyle} value={cfgForm.treasurerName} onChange={(e) => setCfgForm({ ...cfgForm, treasurerName: e.target.value })} placeholder="VD: Nguyễn Văn A" />
@@ -3888,16 +3877,8 @@ function FundTab({ user, perm }) {
             </Field>
             <div className="md:col-span-2">
               <Field label="Ảnh mã QR tài khoản ngân hàng">
-                {cfgForm.qrUrl && (
-                  <a href={cfgForm.qrUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5 mb-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
-                    <img src={cfgForm.qrUrl} alt="Mã QR" className="w-12 h-12 object-cover stamp-border" />
-                    <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
-                      <Paperclip size={12} /> Xem mã QR
-                    </span>
-                  </a>
-                )}
                 <input className={inputCls} style={inputStyle} value={cfgForm.qrUrl} onChange={(e) => setCfgForm({ ...cfgForm, qrUrl: e.target.value })} placeholder="https://…" />
-                <div className="mt-1.5"><UploadField onUploaded={(url) => setCfgForm((f) => ({ ...f, qrUrl: url }))} /></div>
+                <UploadField onUploaded={(url) => setCfgForm((f) => ({ ...f, qrUrl: url }))} />
               </Field>
             </div>
             <div className="md:col-span-2"><Btn onClick={saveCfg}>Lưu thông tin thủ quỹ</Btn></div>
@@ -3906,31 +3887,26 @@ function FundTab({ user, perm }) {
 
         {!cfgLoading && !showCfgForm && (
           fundConfig.treasurerName ? (
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="f-body text-xs" style={{ color: T.ink }}>
+            <div className="flex flex-col sm:flex-row items-start gap-4 mt-2">
+              <div className="flex-1">
+                <div className="f-body text-sm" style={{ color: T.ink }}>
                   Phụ trách: <b>{fundConfig.treasurerName}</b>
                   {perm.name && normalizeName(perm.name) === normalizeName(fundConfig.treasurerName) && (
-                    <span className="f-display text-[9px] uppercase tracking-wider px-1.5 py-0.5 ml-1.5" style={{ background: T.amber, color: T.greenDark }}>Đây là bạn</span>
+                    <span className="f-display text-[10px] uppercase tracking-wider px-2 py-0.5 ml-2" style={{ background: T.amber, color: T.greenDark }}>Đây là bạn</span>
                   )}
                 </div>
                 {fundConfig.bankAccount && (
-                  <div className="f-mono text-[11px] mt-0.5" style={{ color: T.inkSoft }}>
+                  <div className="f-mono text-xs mt-1" style={{ color: T.inkSoft }}>
                     STK: {fundConfig.bankAccount}{fundConfig.bankName ? ` · ${fundConfig.bankName}` : ""}
                   </div>
                 )}
               </div>
               {fundConfig.qrUrl && (
-                <a href={fundConfig.qrUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5 shrink-0" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
-                  <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-12 h-12 object-cover stamp-border" />
-                  <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
-                    <Paperclip size={12} /> Xem mã QR
-                  </span>
-                </a>
+                <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-32 h-32 object-contain stamp-border" style={{ background: "#fff" }} />
               )}
             </div>
           ) : (
-            <div className="f-body text-xs italic" style={{ color: T.inkSoft }}>Chưa chỉ định thủ quỹ.</div>
+            <div className="f-body text-xs italic mt-2" style={{ color: T.inkSoft }}>Chưa chỉ định thủ quỹ.</div>
           )
         )}
       </div>
