@@ -2263,8 +2263,11 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
         {approvalUrl ? (
           <div>
             {isImage(approvalUrl) ? (
-              <a href={approvalUrl} target="_blank" rel="noreferrer">
-                <img src={approvalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+              <a href={approvalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+                <img src={approvalUrl} alt="Đã ký duyệt" className="w-12 h-12 object-cover stamp-border" />
+                <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
+                  <Paperclip size={12} /> Xem ảnh đã ký duyệt
+                </span>
               </a>
             ) : (
               <a href={approvalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
@@ -2502,8 +2505,11 @@ function WeekendOffTab({ user, perm }) {
                 {viewApprovalUrl ? (
                   <div>
                     {isImage(viewApprovalUrl) ? (
-                      <a href={viewApprovalUrl} target="_blank" rel="noreferrer">
-                        <img src={viewApprovalUrl} alt="Đã ký duyệt" className="max-w-full md:max-w-sm max-h-64 stamp-border" />
+                      <a href={viewApprovalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+                        <img src={viewApprovalUrl} alt="Đã ký duyệt" className="w-12 h-12 object-cover stamp-border" />
+                        <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={12} /> Xem ảnh đã ký duyệt
+                        </span>
                       </a>
                     ) : (
                       <a href={viewApprovalUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
