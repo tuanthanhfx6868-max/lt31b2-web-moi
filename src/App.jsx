@@ -3375,8 +3375,11 @@ function OutingTab({ user, perm }) {
             </div>
             {approvalPhoto.loading ? <LoadingRow /> : approvalPhoto.data.url ? (
               <div className="stamp-border p-2.5" style={{ background: "#fff" }}>
-                <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer">
-                  <img src={approvalPhoto.data.url} alt="Danh sách ra ngoài đã ký duyệt" className="max-w-full md:max-w-xs" style={{ border: `1px solid ${T.paperDark}` }} />
+                <a href={approvalPhoto.data.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+                  <img src={approvalPhoto.data.url} alt="Danh sách ra ngoài đã ký duyệt" className="w-12 h-12 object-cover stamp-border" />
+                  <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
+                    <Paperclip size={12} /> Xem ảnh danh sách đã ký duyệt
+                  </span>
                 </a>
                 <div className="f-mono text-[9px] mt-1.5" style={{ color: T.inkSoft }}>
                   Tải lên bởi {approvalPhoto.data.uploadedBy || "—"} lúc {approvalPhoto.data.uploadedAt ? new Date(approvalPhoto.data.uploadedAt).toLocaleString("vi-VN") : "—"}
@@ -3877,8 +3880,20 @@ function FundTab({ user, perm }) {
             </Field>
             <div className="md:col-span-2">
               <Field label="Ảnh mã QR tài khoản ngân hàng">
-                <input className={inputCls} style={inputStyle} value={cfgForm.qrUrl} onChange={(e) => setCfgForm({ ...cfgForm, qrUrl: e.target.value })} placeholder="https://…" />
-                <UploadField onUploaded={(url) => setCfgForm((f) => ({ ...f, qrUrl: url }))} />
+                {cfgForm.qrUrl && (
+                  <a href={cfgForm.qrUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-1.5 mb-1.5" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
+                    <img src={cfgForm.qrUrl} alt="Mã QR đã tải lên" className="w-12 h-12 object-cover stamp-border" />
+                    <span className="f-mono text-xs underline inline-flex items-center gap-1" style={{ color: T.green }}>
+                      <Paperclip size={12} /> Xem ảnh đã tải lên
+                    </span>
+                  </a>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <UploadField onUploaded={(url) => setCfgForm((f) => ({ ...f, qrUrl: url }))} />
+                  {cfgForm.qrUrl && (
+                    <button onClick={() => setCfgForm((f) => ({ ...f, qrUrl: "" }))} className="f-mono text-[10.5px] underline" style={{ color: T.red }}>Xoá ảnh, tải lại</button>
+                  )}
+                </div>
               </Field>
             </div>
             <div className="md:col-span-2"><Btn onClick={saveCfg}>Lưu thông tin thủ quỹ</Btn></div>
@@ -3887,7 +3902,7 @@ function FundTab({ user, perm }) {
 
         {!cfgLoading && !showCfgForm && (
           fundConfig.treasurerName ? (
-            <div className="flex flex-col sm:flex-row items-start gap-4 mt-2">
+            <div className="flex items-center gap-3 mt-2">
               <div className="flex-1">
                 <div className="f-body text-sm" style={{ color: T.ink }}>
                   Phụ trách: <b>{fundConfig.treasurerName}</b>
@@ -3900,9 +3915,16 @@ function FundTab({ user, perm }) {
                     STK: {fundConfig.bankAccount}{fundConfig.bankName ? ` · ${fundConfig.bankName}` : ""}
                   </div>
                 )}
+                {fundConfig.qrUrl && (
+                  <a href={fundConfig.qrUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline inline-flex items-center gap-1 mt-1.5" style={{ color: T.green }}>
+                    <Paperclip size={12} /> Xem mã QR
+                  </a>
+                )}
               </div>
               {fundConfig.qrUrl && (
-                <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-32 h-32 object-contain stamp-border" style={{ background: "#fff" }} />
+                <a href={fundConfig.qrUrl} target="_blank" rel="noreferrer" className="shrink-0">
+                  <img src={fundConfig.qrUrl} alt="Mã QR tài khoản" className="w-14 h-14 object-cover stamp-border" style={{ background: "#fff" }} />
+                </a>
               )}
             </div>
           ) : (
