@@ -46,7 +46,7 @@ const normalizeName = (n) => (n || "").trim().toLowerCase();
 // Dùng chung cho việc phân quyền (useRole) và việc xác thực mật khẩu riêng khi đăng nhập (LoginGate).
 function isCommandRoleForName(name, rosterItems) {
   const rosterMatch = (rosterItems || []).find((m) => normalizeName(m.name) === normalizeName(name));
-  return Boolean(rosterMatch && (rosterMatch.role === "Trung đội trưởng" || rosterMatch.role === "Trung đội phó"));
+  return Boolean(rosterMatch && (hasRole(rosterMatch.role, "Trung đội trưởng") || hasRole(rosterMatch.role, "Trung đội phó")));
 }
 
 // Kiểm tra một cái tên có phải Trung đội trưởng/phó HOẶC Tiểu đội trưởng/phó hay không —
@@ -54,7 +54,7 @@ function isCommandRoleForName(name, rosterItems) {
 function isSquadCommandRoleForName(name, rosterItems) {
   const rosterMatch = (rosterItems || []).find((m) => normalizeName(m.name) === normalizeName(name));
   const COMMAND_CHAT_ROLES = ["Trung đội trưởng", "Trung đội phó", "Tiểu đội trưởng", "Tiểu đội phó"];
-  return Boolean(rosterMatch && COMMAND_CHAT_ROLES.includes(rosterMatch.role));
+  return Boolean(rosterMatch && COMMAND_CHAT_ROLES.some((r) => hasRole(rosterMatch.role, r)));
 }
 
 const FONT_STYLE = `
@@ -947,8 +947,59 @@ const ROSTER_ROLE_OPTIONS = [
   "Bí thư chi bộ", "Phó bí thư chi bộ",
   "Chi uỷ viên chi bộ", "Thư ký chi bộ",
   "Bí thư chi đoàn", "Phó bí thư chi đoàn",
-  "Uỷ viên chi đoàn", "Thành viên",
+  "Uỷ viên chi đoàn", "Cán bộ",
 ];
+// Chức vụ có thể gồm nhiều chức danh, lưu dạng chuỗi phân tách bởi dấu phẩy (VD: "Tiểu đội trưởng, Bí thư chi đoàn")
+function roleList(roleStr) {
+  return String(roleStr || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+function hasRole(roleStr, target) {
+  return roleList(roleStr).includes(target);
+}
+// Hiển thị thân thiện: chức danh mặc định "Cán bộ" (không giữ chức vụ riêng) hiển thị là "Thành viên"
+function roleDisplay(roleStr) {
+  const list = roleList(roleStr).map((r) => (r === "Cán bộ" ? "Thành viên" : r));
+  return list.length ? list.join(" · ") : "Thành viên";
+}
+// Ô chọn nhiều chức danh (tối đa `max`), dùng cho cả form Thêm và Sửa thành viên
+function RoleMultiSelect({ value, onChange, disabled, max = 3 }) {
+  const [open, setOpen] = useState(false);
+  const selected = roleList(value);
+  const toggle = (r) => {
+    if (disabled) return;
+    let next;
+    if (selected.includes(r)) next = selected.filter((x) => x !== r);
+    else { if (selected.length >= max) return; next = [...selected, r]; }
+    onChange(next.length ? next.join(", ") : "Cán bộ");
+  };
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={inputCls}
+        style={{ ...inputStyle, textAlign: "left", cursor: disabled ? "not-allowed" : "pointer" }}
+      >
+        {selected.length ? roleDisplay(value) : "Chọn chức vụ..."}
+      </button>
+      {open && !disabled && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto stamp-border" style={{ background: "#fff" }}>
+          {ROSTER_ROLE_OPTIONS.map((r) => (
+            <label key={r} className="flex items-center gap-2 px-3 py-1.5 text-xs f-body cursor-pointer" style={{ borderBottom: `1px solid ${T.paperDark}` }}>
+              <input type="checkbox" checked={selected.includes(r)} onChange={() => toggle(r)} disabled={!selected.includes(r) && selected.length >= max} />
+              {r}
+            </label>
+          ))}
+          <div className="px-3 py-1.5 f-mono text-[10px] flex items-center justify-between" style={{ color: T.inkSoft }}>
+            <span>Chọn tối đa {max} chức vụ</span>
+            <button type="button" className="underline" onClick={() => setOpen(false)}>Xong</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ============ TAB: QUÂN SỐ ============
    - Thêm/Xoá thành viên: Quản trị, Trung đội trưởng/phó, Cán bộ được gán quyền (perm.canManage).
@@ -959,7 +1010,7 @@ const ROSTER_ROLE_OPTIONS = [
 */
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
-  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
+  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1000,8 +1051,8 @@ function RosterTab({ perm, user }) {
   const openForm = () => {
     setForm(
       canSelfAdd
-        ? { stt: "", msv: "", name: user, role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
-        : { stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
+        ? { stt: "", msv: "", name: user, role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
+        : { stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
     );
     setWarn("");
     setShowForm(true);
@@ -1017,7 +1068,7 @@ function RosterTab({ perm, user }) {
     // Thành viên tự nhập (không có quyền quản lý) chỉ được thêm đúng thông tin của chính mình
     const finalForm = perm.canManage ? form : { ...form, name: user };
     await setItems([...items, { id: Date.now(), ...finalForm }]);
-    setForm({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
+    setForm({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -1029,7 +1080,7 @@ function RosterTab({ perm, user }) {
 
   const startEdit = (m) => {
     setEditingId(m.id);
-    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Thành viên", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
+    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
@@ -1071,9 +1122,9 @@ function RosterTab({ perm, user }) {
   // thuộc tiểu đội nào thì được xếp vào phần thành viên của tiểu đội đó, kèm chú thích đúng chức vụ
   // của họ (không chiếm vị trí Tiểu đội trưởng/phó).
   const squadAll = sortedItems.filter((m) => (m.tieuDoi || "1") === selectedSquad);
-  const squadLeader = squadAll.filter((m) => m.role === "Tiểu đội trưởng");
-  const squadDeputy = squadAll.filter((m) => m.role === "Tiểu đội phó");
-  const squadOthers = squadAll.filter((m) => m.role !== "Tiểu đội trưởng" && m.role !== "Tiểu đội phó");
+  const squadLeader = squadAll.filter((m) => hasRole(m.role, "Tiểu đội trưởng"));
+  const squadDeputy = squadAll.filter((m) => hasRole(m.role, "Tiểu đội phó"));
+  const squadOthers = squadAll.filter((m) => !hasRole(m.role, "Tiểu đội trưởng") && !hasRole(m.role, "Tiểu đội phó"));
   const squadOrdered = [...squadLeader, ...squadDeputy, ...squadOthers];
   // Tổng quân số của từng tiểu đội (1 → 4), hiển thị kèm nút chọn tiểu đội
   const squadCounts = ["1", "2", "3", "4"].reduce((acc, s) => {
@@ -1187,9 +1238,7 @@ function RosterTab({ perm, user }) {
             <input className={inputCls} style={inputStyle} value={form.name} disabled={!perm.canManage} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Chức vụ" required>
-            <select className={inputCls} style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <RoleMultiSelect value={form.role} onChange={(v) => setForm({ ...form, role: v })} />
           </Field>
           <Field label="Tiểu đội" required>
             <select className={inputCls} style={inputStyle} value={form.tieuDoi} onChange={(e) => setForm({ ...form, tieuDoi: e.target.value })}>
@@ -1218,9 +1267,7 @@ function RosterTab({ perm, user }) {
           <Field label="Mã số học viên"><input className={inputCls} style={inputStyle} value={editForm.msv} onChange={(e) => setEditForm({ ...editForm, msv: e.target.value })} /></Field>
           <Field label="Họ và tên" required><input className={inputCls} style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></Field>
           <Field label="Chức vụ">
-            <select className={inputCls} style={inputStyle} value={editForm.role} disabled={!canEditAll} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
-              {ROSTER_ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <RoleMultiSelect value={editForm.role} onChange={(v) => setEditForm({ ...editForm, role: v })} disabled={!canEditAll} />
           </Field>
           <Field label="Tiểu đội">
             <select className={inputCls} style={inputStyle} value={editForm.tieuDoi} disabled={!canEditAll} onChange={(e) => setEditForm({ ...editForm, tieuDoi: e.target.value })}>
@@ -1270,7 +1317,7 @@ function RosterTab({ perm, user }) {
                   <td className="px-2.5 py-2 f-mono font-bold" style={{ color: T.ink, borderRight: `1px solid ${T.paperDark}` }}>{m.stt || "—"}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.msv || "—"}</td>
                   <td className="px-2.5 py-2 font-bold text-[11px] leading-tight" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.name}</td>
-                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{m.role}</td>
+                  <td className="px-2.5 py-2 text-[11px] leading-tight" style={{ color: T.inkSoft, borderRight: `1px solid ${T.paperDark}` }}>{roleDisplay(m.role)}</td>
                   <td className="px-2.5 py-2 f-mono whitespace-nowrap" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.tieuDoi ? `Tiểu đội ${m.tieuDoi}` : "—"}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{formatDob(m.dob)}</td>
                   <td className="px-2.5 py-2 f-mono" style={{ borderRight: `1px solid ${T.paperDark}` }}>{m.phone || "—"}</td>
@@ -1335,8 +1382,8 @@ function RosterTab({ perm, user }) {
       ) : (
         <div className="stamp-border card-sheet" style={{ background: "#fff" }}>
           {squadOrdered.map((m, i) => {
-            const isSquadCommand = m.role === "Tiểu đội trưởng" || m.role === "Tiểu đội phó";
-            const isPlatoonCommand = m.role === "Trung đội trưởng" || m.role === "Trung đội phó";
+            const isSquadCommand = hasRole(m.role, "Tiểu đội trưởng") || hasRole(m.role, "Tiểu đội phó");
+            const isPlatoonCommand = hasRole(m.role, "Trung đội trưởng") || hasRole(m.role, "Trung đội phó");
             return (
               <div
                 key={m.id}
@@ -1362,12 +1409,12 @@ function RosterTab({ perm, user }) {
                           className="f-display text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                           style={{ background: T.green, color: T.paper }}
                         >
-                          {m.role}
+                          {roleDisplay(m.role)}
                         </span>
                       )}
                     </div>
                     <div className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>
-                      {!isPlatoonCommand ? m.role : "Thành viên"}{m.msv ? ` · ${m.msv}` : ""}
+                      {!isPlatoonCommand ? roleDisplay(m.role) : "Thành viên"}{m.msv ? ` · ${m.msv}` : ""}
                     </div>
                   </div>
                 </div>
@@ -1585,7 +1632,7 @@ function DutyScheduleTab({ user, perm }) {
   // Mỗi lượt trực có khung thời gian (từ giờ/ngày → đến giờ/ngày). Khi ngày hệ thống qua khỏi "đến ngày",
   // trang tự động chuyển sang lượt trực hiện hành/kế tiếp — giống Phụ lục trực cuối tuần.
   // Dữ liệu các lượt trực cũ KHÔNG bị xoá — được giữ lại để quy trách nhiệm, chỉ xem lại chứ không xoá được.
-  const commanderCandidates = roster.items.filter((m) => m.role === "Trung đội trưởng" || m.role === "Trung đội phó");
+  const commanderCandidates = roster.items.filter((m) => hasRole(m.role, "Trung đội trưởng") || hasRole(m.role, "Trung đội phó"));
   const duty = items.filter((i) => i.type === "Trực ban");
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -1698,7 +1745,7 @@ function DutyScheduleTab({ user, perm }) {
               <select className={inputCls} style={inputStyle} value={form.commanderName} onChange={(e) => setForm({ ...form, commanderName: e.target.value })}>
                 <option value="">— Chọn người trực chỉ huy —</option>
                 {commanderCandidates.map((m) => (
-                  <option key={m.id} value={m.name}>{m.name} ({m.role})</option>
+                  <option key={m.id} value={m.name}>{m.name} ({roleDisplay(m.role)})</option>
                 ))}
               </select>
             </Field>
