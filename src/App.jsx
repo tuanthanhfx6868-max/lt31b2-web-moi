@@ -3573,23 +3573,28 @@ function PollTab({ user, perm }) {
 function BoardTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("posts");
   const [content, setContent] = useState("");
+  const [attachUrl, setAttachUrl] = useState("");
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [replyAttachUrl, setReplyAttachUrl] = useState("");
   const [warn, setWarn] = useState("");
   const [replyWarn, setReplyWarn] = useState("");
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   const post = async () => {
-    if (!content.trim()) { setWarn("Vui lòng nhập nội dung trước khi đăng."); return; }
+    if (!content.trim() && !attachUrl) { setWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi đăng."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), author: user, content, date: new Date().toISOString(), replies: [] }, ...items]);
+    await setItems([{ id: Date.now(), author: user, content, url: attachUrl, date: new Date().toISOString(), replies: [] }, ...items]);
     setContent("");
+    setAttachUrl("");
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const reply = async (id) => {
-    if (!replyText.trim()) { setReplyWarn("Vui lòng nhập nội dung trả lời trước khi gửi."); return; }
+    if (!replyText.trim() && !replyAttachUrl) { setReplyWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi gửi."); return; }
     setReplyWarn("");
-    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, date: new Date().toISOString() }] } : p));
+    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, url: replyAttachUrl, date: new Date().toISOString() }] } : p));
     setReplyText("");
+    setReplyAttachUrl("");
     setReplyOpen(null);
   };
   const toggleReaction = async (id) => setItems(items.map((p) => {
@@ -3608,6 +3613,19 @@ function BoardTab({ user, perm }) {
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
         <FormWarning message={warn} />
         <textarea rows={2} className={inputCls} style={inputStyle} placeholder="Viết gì đó cho cả trung đội…" value={content} onChange={(e) => setContent(e.target.value)} />
+        <UploadField onUploaded={setAttachUrl} />
+        {attachUrl && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {isImage(attachUrl) ? (
+              <img src={attachUrl} alt="Đính kèm" className="max-w-[140px] max-h-28 stamp-border" />
+            ) : (
+              <a href={attachUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file vừa tải lên
+              </a>
+            )}
+            <button onClick={() => setAttachUrl("")} title="Bỏ đính kèm"><X size={14} style={{ color: T.red }} /></button>
+          </div>
+        )}
         <div className="mt-2"><Btn onClick={post}>Đăng</Btn></div>
       </div>
 
@@ -3619,6 +3637,17 @@ function BoardTab({ user, perm }) {
                 <div>
                   <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
                   <p className="f-body text-sm mt-1" style={{ color: T.ink }}>{p.content}</p>
+                  {p.url && (
+                    isImage(p.url) ? (
+                      <a href={p.url} target="_blank" rel="noreferrer" className="block mt-2">
+                        <img src={p.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
+                      </a>
+                    ) : (
+                      <a href={p.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                        <Paperclip size={12} /> Xem file đính kèm
+                      </a>
+                    )
+                  )}
                   <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>{new Date(p.date).toLocaleString("vi-VN")}</div>
                 </div>
                 {(perm.canManage || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
@@ -3632,6 +3661,17 @@ function BoardTab({ user, perm }) {
                     <div key={idx}>
                       <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
                       <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                      {r.url && (
+                        isImage(r.url) ? (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="block mt-1.5">
+                            <img src={r.url} alt="Đính kèm" className="max-w-[160px] max-h-36 stamp-border" />
+                          </a>
+                        ) : (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all mt-1 ml-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                            <Paperclip size={11} /> Xem file đính kèm
+                          </a>
+                        )
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3644,9 +3684,22 @@ function BoardTab({ user, perm }) {
                     <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
                     <Btn onClick={() => reply(p.id)}>Gửi</Btn>
                   </div>
+                  <UploadField onUploaded={setReplyAttachUrl} />
+                  {replyAttachUrl && (
+                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                      {isImage(replyAttachUrl) ? (
+                        <img src={replyAttachUrl} alt="Đính kèm" className="max-w-[120px] max-h-24 stamp-border" />
+                      ) : (
+                        <a href={replyAttachUrl} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={11} /> Xem file vừa tải lên
+                        </a>
+                      )}
+                      <button onClick={() => setReplyAttachUrl("")} title="Bỏ đính kèm"><X size={13} style={{ color: T.red }} /></button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); }}>Trả lời</button>
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); setReplyAttachUrl(""); }}>Trả lời</button>
               )}
             </div>
           ))}
