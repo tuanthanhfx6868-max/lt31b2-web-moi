@@ -2610,6 +2610,15 @@ function OutingTab({ user, perm }) {
     // (dành cho trường hợp có nhu cầu phát sinh mà không đăng ký kịp); thành viên thường vẫn bị chặn.
     if (isLocked && !canApprove) { setWarn("Đã hết thời gian đăng ký ra ngoài — không thể tạo đăng ký mới. Liên hệ Trung đội trưởng/phó nếu có nhu cầu phát sinh."); return; }
     if (!form.name.trim() || !form.lyDo.trim()) { setWarn("Vui lòng nhập đủ Họ và tên và Lý do ra ngoài trước khi lưu."); return; }
+    // Tránh trùng lặp: cùng một người, cùng một ngày, đang Chờ duyệt hoặc đã Đã duyệt thì không cho tạo đăng ký mới nữa.
+    const trung = items.some((o) => {
+      const st = o.duyet || "Chờ duyệt";
+      return o.ngay === form.ngay && normalizeName(o.name) === normalizeName(form.name) && (st === "Chờ duyệt" || st === "Đã duyệt");
+    });
+    if (trung) {
+      setWarn(`"${form.name}" đã có đăng ký ra ngoài ngày ${new Date(form.ngay).toLocaleDateString("vi-VN")} đang Chờ duyệt hoặc đã Đã duyệt — không thể tạo trùng.`);
+      return;
+    }
     setWarn("");
     // Quản trị / TĐT / TĐP tự thêm người thì coi như đã duyệt luôn; thành viên tự đăng ký thì vào hàng chờ duyệt.
     await setItems([
