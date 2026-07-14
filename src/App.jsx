@@ -947,7 +947,7 @@ const ROSTER_ROLE_OPTIONS = [
   "Bí thư chi bộ", "Phó bí thư chi bộ",
   "Chi uỷ viên chi bộ", "Thư ký chi bộ",
   "Bí thư chi đoàn", "Phó bí thư chi đoàn",
-  "Uỷ viên chi đoàn", "Cán bộ",
+  "Uỷ viên chi đoàn", "Thành viên",
 ];
 
 /* ============ TAB: QUÂN SỐ ============
@@ -959,7 +959,7 @@ const ROSTER_ROLE_OPTIONS = [
 */
 function RosterTab({ perm, user }) {
   const { items, setItems, loading } = useSharedList("roster");
-  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+  const [form, setForm] = useState({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -1000,8 +1000,8 @@ function RosterTab({ perm, user }) {
   const openForm = () => {
     setForm(
       canSelfAdd
-        ? { stt: "", msv: "", name: user, role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
-        : { stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" }
+        ? { stt: "", msv: "", name: user, role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
+        : { stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" }
     );
     setWarn("");
     setShowForm(true);
@@ -1017,7 +1017,7 @@ function RosterTab({ perm, user }) {
     // Thành viên tự nhập (không có quyền quản lý) chỉ được thêm đúng thông tin của chính mình
     const finalForm = perm.canManage ? form : { ...form, name: user };
     await setItems([...items, { id: Date.now(), ...finalForm }]);
-    setForm({ stt: "", msv: "", name: "", role: "Cán bộ", tieuDoi: "1", phone: "", dob: "" });
+    setForm({ stt: "", msv: "", name: "", role: "Thành viên", tieuDoi: "1", phone: "", dob: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -1029,7 +1029,7 @@ function RosterTab({ perm, user }) {
 
   const startEdit = (m) => {
     setEditingId(m.id);
-    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Cán bộ", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
+    setEditForm({ stt: m.stt || "", msv: m.msv || "", name: m.name || "", role: m.role || "Thành viên", tieuDoi: m.tieuDoi || "1", phone: m.phone || "", dob: m.dob || "" });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
 
@@ -1243,7 +1243,7 @@ function RosterTab({ perm, user }) {
       )}
 
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có dữ liệu quân số." /> : filteredItems.length === 0 ? (
-        <EmptyState text="Không tìm thấy quân nhân nào khớp với từ khoá tìm kiếm." />
+        <EmptyState text="Không tìm thấy thành viên nào khớp với từ khoá tìm kiếm." />
       ) : (
         <div className="overflow-x-auto overflow-y-auto stamp-border card-sheet" style={{ background: "#fff", maxHeight: 370 }}>
           <table className="w-full f-body table-lines" style={{ fontSize: "12.5px" }}>
@@ -1297,7 +1297,7 @@ function RosterTab({ perm, user }) {
 
       {/* ---- Danh sách theo tiểu đội (tự động lấy dữ liệu từ danh sách trung đội ở trên) ---- */}
       <div className="my-8" style={{ borderTop: `1px dashed ${T.paperDark}` }} />
-      <SectionHeader icon={Users} eyebrow={`Tiểu đội ${selectedSquad}: ${squadOrdered.length} quân nhân`} title="Danh sách tiểu đội" />
+      <SectionHeader icon={Users} eyebrow={`Tiểu đội ${selectedSquad}: ${squadOrdered.length} thành viên`} title="Danh sách tiểu đội" />
       <p className="f-body text-xs mb-4 -mt-2" style={{ color: T.inkSoft }}>
         Số 1 là Tiểu đội trưởng, số 2 là Tiểu đội phó, còn lại là thành viên đánh số tiếp theo tăng dần. Riêng Trung đội trưởng / Trung đội phó
         thuộc tiểu đội nào sẽ được xếp vào thành viên của tiểu đội đó, kèm chú thích đúng chức vụ của họ.
@@ -1331,7 +1331,7 @@ function RosterTab({ perm, user }) {
       </div>
 
       {loading ? <LoadingRow /> : squadOrdered.length === 0 ? (
-        <EmptyState text={`Chưa có quân nhân nào thuộc Tiểu đội ${selectedSquad}.`} />
+        <EmptyState text={`Chưa có thành viên nào thuộc Tiểu đội ${selectedSquad}.`} />
       ) : (
         <div className="stamp-border card-sheet" style={{ background: "#fff" }}>
           {squadOrdered.map((m, i) => {
@@ -2121,7 +2121,7 @@ function WeekendEntryCard({ entry, entries, setEntries, perm, user, onRemoveEntr
           </div>
           {availableRoster.length === 0 ? (
             <div className="f-body text-xs italic py-2 text-center" style={{ color: T.inkSoft }}>
-              Tất cả quân nhân trong Quân số đã có trong danh sách trực đợt này.
+              Tất cả thành viên trong Quân số đã có trong danh sách trực đợt này.
             </div>
           ) : (
             <div className="max-h-64 overflow-y-auto" style={{ border: `1px solid ${T.paperDark}`, background: "#fff" }}>
@@ -2385,15 +2385,15 @@ function WeekendOffTab({ user, perm }) {
               {sortedRestMembers.length === 0 ? (
                 <div className="f-body text-xs italic py-4 text-center" style={{ color: T.inkSoft }}>Không có ai trong danh sách nghỉ đợt này.</div>
               ) : (
-                <div className="overflow-x-auto mt-3">
-                  <table className="w-full text-sm f-body table-lines" style={{ fontSize: "12.5px" }}>
+                <div className="overflow-x-auto overflow-y-auto mt-3" style={{ maxHeight: 460 }}>
+                  <table className="w-full text-sm f-body table-lines table-grid" style={{ fontSize: "12.5px" }}>
                     <thead>
                       <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper }}>
-                        <th className="text-left px-2 py-1.5 w-8">STT</th>
-                        <th className="text-left px-2 py-1.5 min-w-[100px]">Họ và tên</th>
-                        <th className="text-left px-2 py-1.5">N.sinh</th>
-                        <th className="text-left px-2 py-1.5">T.đội</th>
-                        <th className="text-left px-2 py-1.5 min-w-[170px]">Thẻ ra vào cổng</th>
+                        <th className="text-left px-2 py-1.5 w-8 sticky top-0" style={{ background: T.green }}>STT</th>
+                        <th className="text-left px-2 py-1.5 min-w-[100px] sticky top-0" style={{ background: T.green }}>Họ và tên</th>
+                        <th className="text-left px-2 py-1.5 sticky top-0" style={{ background: T.green }}>Năm sinh</th>
+                        <th className="text-left px-2 py-1.5 sticky top-0" style={{ background: T.green }}>Tiểu đội</th>
+                        <th className="text-left px-2 py-1.5 min-w-[170px] sticky top-0" style={{ background: T.green }}>Thẻ ra vào cổng</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2401,7 +2401,7 @@ function WeekendOffTab({ user, perm }) {
                         <tr key={m.id} style={{ background: i % 2 ? T.paper : "#fff" }}>
                           <td className="px-2 py-1.5 f-mono">{i + 1}</td>
                           <td className="px-2 py-1.5 font-medium">{m.name}</td>
-                          <td className="px-2 py-1.5 f-mono">{m.dob}</td>
+                          <td className="px-2 py-1.5 f-mono">{formatDob(m.dob)}</td>
                           <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi}</td>
                           <td className="px-2 py-1.5">
                             <TheTrangThaiBadge
@@ -2838,6 +2838,8 @@ function AttendanceTab({ user, perm }) {
   const roster = useSharedList("roster");
   const { items, setItems, loading } = useSharedList("attendance");
   const [selectedStatId, setSelectedStatId] = useState(null);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const STATUSES = ["Có mặt", "Vắng", "Phép", "Không phép", "Ốm"];
@@ -2857,6 +2859,22 @@ function AttendanceTab({ user, perm }) {
     } else {
       await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status, by: user }]);
     }
+  };
+
+  const startEditNote = (member) => {
+    const rec = recordFor(member.id);
+    setEditingNoteId(member.id);
+    setNoteDraft(rec?.note || "");
+  };
+
+  const saveNote = async (member) => {
+    const existing = recordFor(member.id);
+    if (existing) {
+      await setItems(items.map((r) => (r.id === existing.id ? { ...r, note: noteDraft } : r)));
+    } else {
+      await setItems([...items, { id: Date.now() + Math.random(), date, memberId: member.id, name: member.name, status: null, note: noteDraft, by: user }]);
+    }
+    setEditingNoteId(null);
   };
 
   const dayRecords = items.filter((r) => r.date === date);
@@ -2903,31 +2921,78 @@ function AttendanceTab({ user, perm }) {
       ) : markableRoster.length === 0 ? (
         <EmptyState text="Không tìm thấy tên của bạn trong danh sách quân số — liên hệ chỉ huy để được thêm vào Quân số." />
       ) : (
-        <div className="space-y-1.5 mb-8 overflow-y-auto" style={{ maxHeight: 300 }}>
-          {markableRoster.map((m) => {
-            const rec = recordFor(m.id);
-            return (
-              <div key={m.id} className="flex items-center justify-between gap-2 p-2 flex-wrap" style={{ background: "#fff" }}>
-                <div className="f-body text-xs font-medium" style={{ color: T.ink }}>{m.name} <span className="f-mono text-[10.5px]" style={{ color: T.inkSoft }}>· TĐ{m.tieuDoi || "—"}</span></div>
-                <div className="flex gap-1 flex-wrap">
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setStatus(m, s)}
-                      className="f-display text-[9.5px] uppercase tracking-wider px-2 py-0.5 flex items-center gap-1"
-                      style={{
-                        background: rec?.status === s ? statusColor[s] : "transparent",
-                        color: rec?.status === s ? "#fff" : statusColor[s],
-                        border: `1px solid ${statusColor[s]}`,
-                      }}
-                    >
-                      {rec?.status === s ? <CheckCircle2 size={10} /> : <Circle size={10} />} {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto overflow-y-auto mb-8 stamp-border" style={{ background: "#fff", maxHeight: 460 }}>
+          <table className="w-full text-xs f-body table-lines table-grid">
+            <thead>
+              <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
+                <th className="text-left px-2 py-1.5 w-8">STT</th>
+                <th className="text-left px-2 py-1.5 min-w-[110px]">Họ và tên</th>
+                <th className="text-left px-2 py-1.5">Tiểu đội</th>
+                <th className="text-left px-2 py-1.5 min-w-[240px]">Trạng thái</th>
+                <th className="px-2 py-1.5 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {markableRoster.map((m, i) => {
+                const rec = recordFor(m.id);
+                const editing = editingNoteId === m.id;
+                return (
+                  <React.Fragment key={m.id}>
+                    <tr style={{ background: i % 2 ? T.paper : "#fff" }}>
+                      <td className="px-2 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
+                      <td className="px-2 py-1.5 font-medium">
+                        {m.name}
+                        {rec?.note && !editing && (
+                          <div className="f-body text-[10px] italic mt-0.5" style={{ color: T.inkSoft }}>Ghi chú: {rec.note}</div>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 f-mono">TĐ{m.tieuDoi || "—"}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex gap-1 flex-wrap">
+                          {STATUSES.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => setStatus(m, s)}
+                              className="f-display text-[9.5px] uppercase tracking-wider px-2 py-0.5 flex items-center gap-1"
+                              style={{
+                                background: rec?.status === s ? statusColor[s] : "transparent",
+                                color: rec?.status === s ? "#fff" : statusColor[s],
+                                border: `1px solid ${statusColor[s]}`,
+                              }}
+                            >
+                              {rec?.status === s ? <CheckCircle2 size={10} /> : <Circle size={10} />} {s}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <button onClick={() => (editing ? setEditingNoteId(null) : startEditNote(m))} title="Sửa ghi chú">
+                          <Pencil size={13} style={{ color: T.green }} />
+                        </button>
+                      </td>
+                    </tr>
+                    {editing && (
+                      <tr style={{ background: T.paper }}>
+                        <td colSpan={5} className="px-2 py-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <input
+                              className={inputCls}
+                              style={{ ...inputStyle, fontSize: "11px", padding: "4px 8px", maxWidth: 320 }}
+                              placeholder="Ghi chú / lý do (VD: xin phép về quê, ốm sốt...)"
+                              value={noteDraft}
+                              onChange={(e) => setNoteDraft(e.target.value)}
+                            />
+                            <Btn size="sm" onClick={() => saveNote(m)}>Lưu</Btn>
+                            <Btn size="sm" variant="outline" onClick={() => setEditingNoteId(null)}>Huỷ</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -2935,15 +3000,16 @@ function AttendanceTab({ user, perm }) {
         <>
           <div className="f-display text-xs uppercase tracking-wider mb-2" style={{ color: T.amberDark }}>Tỷ lệ chuyên cần (tổng)</div>
           <div className="overflow-x-auto overflow-y-auto stamp-border" style={{ background: "#fff", maxHeight: 290 }}>
-            <table className="w-full text-xs f-body table-lines">
+            <table className="w-full text-xs f-body table-lines table-grid">
               <thead>
                 <tr className="f-mono text-[10px] uppercase tracking-wider" style={{ background: T.green, color: T.paper, position: "sticky", top: 0, zIndex: 1 }}>
-                  <th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
+                  <th className="text-left px-2.5 py-1.5 w-8">STT</th><th className="text-left px-2.5 py-1.5">Họ tên</th><th className="text-left px-2.5 py-1.5">Số lần điểm danh</th><th className="text-left px-2.5 py-1.5">% có mặt</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.map((m, i) => (
                   <tr key={m.id} onClick={() => setSelectedStatId((s) => (s === m.id ? null : m.id))} className="cursor-pointer" style={withSelect({ background: i % 2 ? T.paper : "#fff" }, selectedStatId === m.id)}>
+                    <td className="px-2.5 py-1.5 f-mono font-bold">{m.stt || i + 1}</td>
                     <td className="px-2.5 py-1.5 font-medium">{m.name}</td>
                     <td className="px-2.5 py-1.5 f-mono">{m.total}</td>
                     <td className="px-2.5 py-1.5 f-mono font-semibold" style={{ color: m.pct === null ? T.inkSoft : m.pct >= 90 ? T.green : m.pct >= 70 ? T.amberDark : T.red }}>
