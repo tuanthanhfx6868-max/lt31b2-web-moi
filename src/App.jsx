@@ -317,7 +317,7 @@ function useSharedList(key) {
 }
 
 function useAuthConfig() {
-  const [config, setConfigState] = useState({ unitPassword: UNIT_PASSWORD_DEFAULT, adminPassword: ADMIN_PASSWORD_DEFAULT, memberPasswords: {} });
+  const [config, setConfigState] = useState({ unitPassword: UNIT_PASSWORD_DEFAULT, adminPassword: ADMIN_PASSWORD_DEFAULT, squadPassword: "", memberPasswords: {} });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -331,6 +331,9 @@ function useAuthConfig() {
             setConfigState({
               unitPassword: parsed.unitPassword || UNIT_PASSWORD_DEFAULT,
               adminPassword: parsed.adminPassword || ADMIN_PASSWORD_DEFAULT,
+              // Mật khẩu dùng chung cho chỉ huy đội (Tiểu đội trưởng/phó...) — đăng nhập bằng bất kỳ tên nào
+              // kèm đúng mật khẩu này sẽ được cấp quyền quản lý ngay (giống quyền Cán bộ). Để trống = tắt tính năng này.
+              squadPassword: parsed.squadPassword || "",
               // Mật khẩu đăng nhập riêng cho từng Trung đội trưởng / Trung đội phó (khoá theo tên đã chuẩn hoá)
               memberPasswords: parsed.memberPasswords || {},
             });
@@ -554,7 +557,7 @@ function useOutingApprovalPhoto(date) {
   return { data, save, loading };
 }
 
-function useRole(user, isAdminLogin) {
+function useRole(user, isAdminLogin, isSquadLogin) {
   const { items: permissions, setItems: setPermissions, loading: permLoading } = useSharedList("permissions");
   const { items: rosterItems, loading: rosterLoading } = useSharedList("roster");
   const { value: fundConfig, loading: fundConfigLoading } = useSingleDoc("fundConfig", {
@@ -568,6 +571,7 @@ function useRole(user, isAdminLogin) {
 
   let role = "thanh_vien";
   if (isAdminLogin) role = "admin";
+  else if (isSquadLogin) role = "can_bo";
   else if (explicit) role = explicit.role;
   else if (isCommandRole) role = "can_bo";
 
@@ -582,9 +586,10 @@ function useRole(user, isAdminLogin) {
     isTreasurer,
     canManageFund: canManage || isTreasurer,
     isCommandRole,
-    // Quyền vào "Phòng trò chuyện chỉ huy": Quản trị, Trung đội trưởng/phó, Tiểu đội trưởng/phó
-    canAccessCommandChat: role === "admin" || isSquadCommandRoleForName(user, rosterItems),
-    title: rosterMatch?.role || null,
+    isSquadLogin: Boolean(isSquadLogin),
+    // Quyền vào "Phòng trò chuyện chỉ huy": Quản trị, Trung đội trưởng/phó, Tiểu đội trưởng/phó, hoặc đăng nhập bằng mật khẩu chỉ huy đội
+    canAccessCommandChat: role === "admin" || isSquadLogin || isSquadCommandRoleForName(user, rosterItems),
+    title: rosterMatch?.role || (isSquadLogin ? "Chỉ huy đội" : null),
     isOwner: (ownerName) => normalizeName(ownerName) === normalizeName(user),
   };
   return { perm, permissions, setPermissions, permLoading: permLoading || rosterLoading || fundConfigLoading };
@@ -786,7 +791,14 @@ function LoginGate({ onLogin }) {
     }
     // Mật khẩu quản trị luôn đăng nhập được với quyền cao nhất, bất kể tên nhập vào.
     if (pw === config.adminPassword) {
-      onLogin(name.trim(), true);
+      onLogin(name.trim(), true, false);
+      return;
+    }
+
+    // Mật khẩu chỉ huy đội (dùng chung) — bất kỳ ai gõ đúng mật khẩu này, với bất kỳ tên nào, đều được
+    // cấp quyền quản lý ngay (giống quyền Cán bộ). Chỉ hoạt động nếu quản trị đã đặt mật khẩu này (không để trống).
+    if (config.squadPassword && pw === config.squadPassword) {
+      onLogin(name.trim(), false, true);
       return;
     }
 
@@ -799,7 +811,7 @@ function LoginGate({ onLogin }) {
         setErr("Mật khẩu không đúng. Liên hệ quản trị để được cấp lại mật khẩu riêng.");
         return;
       }
-      onLogin(name.trim(), false);
+      onLogin(name.trim(), false, false);
       return;
     }
 
@@ -807,7 +819,7 @@ function LoginGate({ onLogin }) {
       setErr("Mật khẩu không đúng. Liên hệ lớp trưởng/quản trị để lấy mật khẩu.");
       return;
     }
-    onLogin(name.trim(), false);
+    onLogin(name.trim(), false, false);
   };
 
   return (
@@ -4817,6 +4829,7 @@ function PasswordTab({ user, perm }) {
   const { config, setConfig, loading } = useAuthConfig();
   const [unitPw, setUnitPw] = useState("");
   const [adminPw, setAdminPw] = useState("");
+  const [squadPw, setSquadPw] = useState("");
   const [ownPw, setOwnPw] = useState("");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
@@ -4826,8 +4839,9 @@ function PasswordTab({ user, perm }) {
   useEffect(() => {
     setUnitPw(config.unitPassword);
     setAdminPw(config.adminPassword);
+    setSquadPw(config.squadPassword || "");
     setOwnPw(config.memberPasswords?.[normalized] || config.unitPassword);
-  }, [config.unitPassword, config.adminPassword, config.memberPasswords, normalized]);
+  }, [config.unitPassword, config.adminPassword, config.squadPassword, config.memberPasswords, normalized]);
 
   const [warn, setWarn] = useState("");
 
@@ -4835,7 +4849,7 @@ function PasswordTab({ user, perm }) {
     if (!unitPw.trim() || !adminPw.trim()) { setWarn("Vui lòng nhập đủ cả Mật khẩu chung trung đội và Mật khẩu quản trị trước khi lưu."); return; }
     setWarn("");
     setSaving(true);
-    const ok = await setConfig({ ...config, unitPassword: unitPw.trim(), adminPassword: adminPw.trim() });
+    const ok = await setConfig({ ...config, unitPassword: unitPw.trim(), adminPassword: adminPw.trim(), squadPassword: squadPw.trim() });
     setSaving(false);
     setStatus(ok ? "Đã lưu mật khẩu mới. Áp dụng ngay từ lần đăng nhập tiếp theo." : "Lưu thất bại, thử lại nhé.");
     setTimeout(() => setStatus(""), 4000);
@@ -4860,7 +4874,7 @@ function PasswordTab({ user, perm }) {
       ) : perm.isAdmin ? (
         <div className="stamp-border p-4" style={{ background: "#fff" }}>
           <p className="f-body text-xs mb-4" style={{ color: T.inkSoft }}>
-            Bạn là Quản trị — quyền cao nhất, đổi được cả mật khẩu chung trung đội và mật khẩu quản trị.
+            Bạn là Quản trị — quyền cao nhất, đổi được mật khẩu chung trung đội, mật khẩu quản trị, và mật khẩu chỉ huy đội.
             Mật khẩu mới áp dụng ngay từ lần đăng nhập tiếp theo của mọi người trong trung đội.
           </p>
           <FormWarning message={warn} />
@@ -4870,6 +4884,13 @@ function PasswordTab({ user, perm }) {
           <Field label="Mật khẩu quản trị (đăng nhập được toàn quyền)" required>
             <PasswordInput value={adminPw} onChange={(e) => setAdminPw(e.target.value)} />
           </Field>
+          <Field label="Mật khẩu chỉ huy đội (đăng nhập được ngay quyền quản lý, dùng chung cho Tiểu đội trưởng/phó — để trống nếu không muốn dùng)">
+            <PasswordInput value={squadPw} onChange={(e) => setSquadPw(e.target.value)} />
+          </Field>
+          <p className="f-body text-[11px] mb-3" style={{ color: T.inkSoft }}>
+            Ai gõ đúng mật khẩu này (với bất kỳ tên nào) sẽ được cấp quyền quản lý ngay lập tức — không cần đúng tên
+            đã khai chức vụ trong Quân số. Phù hợp để phát chung cho các Tiểu đội trưởng/phó.
+          </p>
           <Btn onClick={saveAdmin} disabled={saving}>{saving ? "Đang lưu…" : "Lưu mật khẩu"}</Btn>
           {status && <div className="f-body text-xs mt-3" style={{ color: T.green }}>{status}</div>}
         </div>
@@ -4877,7 +4898,7 @@ function PasswordTab({ user, perm }) {
         <div className="stamp-border p-4" style={{ background: "#fff" }}>
           <p className="f-body text-xs mb-4" style={{ color: T.inkSoft }}>
             Bạn là Trung đội trưởng/phó — chỉ đổi được mật khẩu đăng nhập riêng của chính mình.
-            Bạn không có quyền xem hay đổi mật khẩu chung trung đội, và càng không có quyền xem hay đổi mật khẩu quản trị.
+            Bạn không có quyền xem hay đổi mật khẩu chung trung đội, mật khẩu chỉ huy đội, và càng không có quyền xem hay đổi mật khẩu quản trị.
           </p>
           <FormWarning message={warn} />
           <Field label={`Mật khẩu đăng nhập riêng của bạn (${user})`} required>
@@ -4987,6 +5008,7 @@ const TABS = [
 export default function App() {
   const [user, setUser] = useState(null);
   const [isAdminLogin, setIsAdminLogin] = useState(false);
+  const [isSquadLogin, setIsSquadLogin] = useState(false);
   const [tab, setTab] = useState("home");
   const [navOpen, setNavOpen] = useState(false);
   // Tên + SĐT chủ nhiệm trung đội, hiện dưới tên trung đội ở thanh đầu trang — chỉ huy nhập/sửa được.
@@ -4994,7 +5016,7 @@ export default function App() {
   const [editingAdvisor, setEditingAdvisor] = useState(false);
   const [advisorForm, setAdvisorForm] = useState({ name: "", phone: "" });
 
-  const { perm, permissions, setPermissions, permLoading } = useRole(user, isAdminLogin);
+  const { perm, permissions, setPermissions, permLoading } = useRole(user, isAdminLogin, isSquadLogin);
 
   // Dữ liệu của các phụ lục (trừ Quân số) — dùng để đếm "số thông báo mới" trên thanh điều hướng, kiểu như Zalo.
   const announcementsList = useSharedList("announcements");
@@ -5031,7 +5053,7 @@ export default function App() {
     if (unreadCounts[tabId] > 0) seenState.markSeen(tabId);
   };
 
-  if (!user) return <LoginGate onLogin={(name, admin) => { setUser(name); setIsAdminLogin(!!admin); }} />;
+  if (!user) return <LoginGate onLogin={(name, admin, squad) => { setUser(name); setIsAdminLogin(!!admin); setIsSquadLogin(!!squad); }} />;
 
   const roleBadge = { admin: "Quản trị", can_bo: "Cán bộ", thanh_vien: "Thành viên" };
 
@@ -5149,11 +5171,11 @@ export default function App() {
               className="f-display text-[10px] uppercase tracking-wider pl-1.5 pr-2.5 py-1 inline-flex items-center gap-1 rounded-full"
               style={{ background: T.amber, color: T.greenDark }}
             >
-              <RoleIcon size={11} /> {perm.isCommandRole && perm.title ? perm.title : roleBadge[perm.role]}
+              <RoleIcon size={11} /> {(perm.isCommandRole || perm.isSquadLogin) && perm.title ? perm.title : roleBadge[perm.role]}
             </span>
           </span>
           <button
-            onClick={() => { setUser(null); setIsAdminLogin(false); }}
+            onClick={() => { setUser(null); setIsAdminLogin(false); setIsSquadLogin(false); }}
             className="f-display text-xs uppercase flex items-center gap-1.5 px-3 py-1.5 btn-press rounded-sm"
             style={{ color: T.paper, border: `1px solid ${T.amber}` }}
           >
