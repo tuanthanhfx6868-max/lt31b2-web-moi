@@ -894,9 +894,10 @@ function AnnouncementsTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("announcements");
   const schedule = useSharedList("schedule");
   const outings = useSharedList("outings");
-  const [form, setForm] = useState({ title: "", body: "" });
+  const [form, setForm] = useState({ title: "", body: "", url: "" });
   const [showForm, setShowForm] = useState(false);
   const [warn, setWarn] = useState("");
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   const today = new Date().toISOString().slice(0, 10);
   const todaySchedule = schedule.items.filter((s) => s.date === today);
@@ -905,9 +906,9 @@ function AnnouncementsTab({ user, perm }) {
   const add = async () => {
     if (!form.title.trim()) { setWarn("Vui lòng nhập Tiêu đề trước khi lưu."); return; }
     setWarn("");
-    const entry = { id: Date.now(), title: form.title, body: form.body, author: user, date: new Date().toISOString(), pinned: false };
+    const entry = { id: Date.now(), title: form.title, body: form.body, url: form.url, author: user, date: new Date().toISOString(), pinned: false };
     await setItems([entry, ...items]);
-    setForm({ title: "", body: "" });
+    setForm({ title: "", body: "", url: "" });
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
@@ -949,6 +950,22 @@ function AnnouncementsTab({ user, perm }) {
           <FormWarning message={warn} />
           <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Nội dung"><textarea rows={3} className={inputCls} style={inputStyle} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></Field>
+          <Field label="Đính kèm ảnh/file hoặc link (không bắt buộc)">
+            <input className={inputCls} style={inputStyle} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
+            <UploadField onUploaded={(url) => setForm((f) => ({ ...f, url }))} />
+            {form.url && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                {isImage(form.url) ? (
+                  <img src={form.url} alt="Đính kèm" className="max-w-[140px] max-h-28 stamp-border" />
+                ) : (
+                  <a href={form.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                    <Paperclip size={12} /> Xem file/link vừa nhập
+                  </a>
+                )}
+                <button onClick={() => setForm((f) => ({ ...f, url: "" }))} title="Bỏ đính kèm"><X size={14} style={{ color: T.red }} /></button>
+              </div>
+            )}
+          </Field>
           <Btn onClick={add}>Đăng</Btn>
         </div>
       )}
@@ -969,6 +986,27 @@ function AnnouncementsTab({ user, perm }) {
                     <h3 className="f-display font-semibold" style={{ color: T.green }}>{a.title}</h3>
                   </div>
                   <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{a.body}</p>
+                  {a.url && (
+                    isImage(a.url) ? (
+                      <div className="mt-2">
+                        <a href={a.url} target="_blank" rel="noreferrer" className="block" onClick={(e) => e.stopPropagation()}>
+                          <img src={a.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
+                        </a>
+                        <a href={a.url} onClick={(e) => { e.preventDefault(); e.stopPropagation(); forceDownload(a.url, a.title); }} className="f-mono text-xs underline inline-flex items-center gap-1 mt-1.5 cursor-pointer" style={{ color: T.green }}>
+                          <Download size={12} /> Tải ảnh về máy
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex items-center gap-3 flex-wrap">
+                        <a href={a.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={12} /> Mở link / xem file
+                        </a>
+                        <a href={a.url} onClick={(e) => { e.preventDefault(); e.stopPropagation(); forceDownload(a.url, a.title); }} className="f-mono text-xs underline inline-flex items-center gap-1 cursor-pointer" style={{ color: T.green }}>
+                          <Download size={12} /> Tải file về máy
+                        </a>
+                      </div>
+                    )
+                  )}
                   <div className="f-mono text-[11px] mt-2" style={{ color: T.inkSoft }}>{a.author} · {new Date(a.date).toLocaleString("vi-VN")}</div>
                   <ReactionBar reactions={a.reactions} user={user} onToggle={() => toggleReaction(a.id)} />
                 </div>
