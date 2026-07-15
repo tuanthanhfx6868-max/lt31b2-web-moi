@@ -912,7 +912,17 @@ function AnnouncementsTab({ user, perm }) {
     setShowForm(false);
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
-  const togglePin = async (id) => setItems(items.map((i) => (i.id === id ? { ...i, pinned: !i.pinned } : i)));
+  const [pinWarn, setPinWarn] = useState("");
+  const togglePin = async (id) => {
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    if (!target.pinned && items.filter((i) => i.pinned).length >= 10) {
+      setPinWarn("Chỉ được ghim tối đa 10 thông báo. Hãy bỏ ghim bớt trước khi ghim thêm.");
+      return;
+    }
+    setPinWarn("");
+    await setItems(items.map((i) => (i.id === id ? { ...i, pinned: !i.pinned, pinnedAt: !i.pinned ? Date.now() : null } : i)));
+  };
   const toggleReaction = async (id) => setItems(items.map((a) => {
     if (a.id !== id) return a;
     const reactions = a.reactions || [];
@@ -937,12 +947,21 @@ function AnnouncementsTab({ user, perm }) {
     setEditingId(null);
   };
 
-  const sorted = [...items].sort((a, b) => (b.pinned - a.pinned) || (new Date(b.date) - new Date(a.date)));
+  const sorted = [...items].sort((a, b) => {
+    const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+    if (pinDiff !== 0) return pinDiff;
+    if (a.pinned && b.pinned) return (a.pinnedAt || 0) - (b.pinnedAt || 0);
+    return new Date(b.date) - new Date(a.date);
+  });
+  const pinRank = {};
+  sorted.filter((a) => a.pinned).forEach((a, idx) => { pinRank[a.id] = idx + 1; });
 
   return (
     <div>
       <SectionHeader icon={Shield} eyebrow="Trang chủ" title="Thông báo trung đội"
         action={perm.canManage && <Btn onClick={() => setShowForm((s) => !s)}><Plus size={16} /> Đăng thông báo</Btn>} />
+
+      {pinWarn && <FormWarning message={pinWarn} />}
 
       {(todaySchedule.length > 0 || chuaVe.length > 0) && (
         <div className="mb-5 space-y-2">
@@ -1023,7 +1042,11 @@ function AnnouncementsTab({ user, perm }) {
                 ) : (
                 <div>
                   <div className="flex items-center gap-2">
-                    {a.pinned && <Pin size={14} style={{ color: T.amberDark }} />}
+                    {a.pinned && (
+                      <span className="f-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 inline-flex items-center gap-1" style={{ background: T.amber, color: T.greenDark }}>
+                        <Pin size={11} /> Ghim #{pinRank[a.id]}
+                      </span>
+                    )}
                     <h3 className="f-display font-semibold" style={{ color: T.green }}>{a.title}</h3>
                   </div>
                   <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{a.body}</p>
@@ -1056,7 +1079,7 @@ function AnnouncementsTab({ user, perm }) {
                 )}
                 {editingId !== a.id && (
                 <div className="flex gap-2 shrink-0">
-                  {perm.canManage && <button onClick={() => togglePin(a.id)} title="Ghim"><Star size={16} style={{ color: a.pinned ? T.amberDark : "#C9BFA5" }} /></button>}
+                  {perm.canManage && <button onClick={() => togglePin(a.id)} title={a.pinned ? "Bỏ ghim" : "Ghim"}><Star size={16} fill={a.pinned ? T.amberDark : "none"} style={{ color: a.pinned ? T.amberDark : "#C9BFA5", filter: a.pinned ? `drop-shadow(0 0 4px ${T.amber})` : "none", transition: "all .15s" }} /></button>}
                   {perm.canManage && <button onClick={(e) => startEdit(a, e)} title="Sửa"><Pencil size={16} style={{ color: T.green }} /></button>}
                   {canDelete(a) && <button onClick={() => remove(a.id)} title="Xoá"><Trash2 size={16} style={{ color: T.red }} /></button>}
                 </div>
@@ -4330,7 +4353,19 @@ function BoardTab({ user, perm }) {
   const [selectedId, setSelectedId] = useState(null);
   const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
-  // ---- Sửa / xoá bài đăng của chính mình ----
+  // ---- Ghim tin nhắn quan trọng (tối đa 10, dành cho chỉ huy) ----
+  const [pinWarn, setPinWarn] = useState("");
+  const togglePin = async (id, e) => {
+    e.stopPropagation();
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    if (!target.pinned && items.filter((i) => i.pinned).length >= 10) {
+      setPinWarn("Chỉ được ghim tối đa 10 tin nhắn. Hãy bỏ ghim bớt trước khi ghim thêm.");
+      return;
+    }
+    setPinWarn("");
+    await setItems(items.map((i) => (i.id === id ? { ...i, pinned: !i.pinned, pinnedAt: !i.pinned ? Date.now() : null } : i)));
+  };
   const [editingPostId, setEditingPostId] = useState(null);
   const [editPostContent, setEditPostContent] = useState("");
   const [editPostUrl, setEditPostUrl] = useState("");
@@ -4378,9 +4413,20 @@ function BoardTab({ user, perm }) {
     </a>
   );
 
+  const sortedPosts = [...items].sort((a, b) => {
+    const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+    if (pinDiff !== 0) return pinDiff;
+    if (a.pinned && b.pinned) return (a.pinnedAt || 0) - (b.pinnedAt || 0);
+    return 0;
+  });
+  const pinRank = {};
+  sortedPosts.filter((p) => p.pinned).forEach((p, idx) => { pinRank[p.id] = idx + 1; });
+
   return (
     <div>
       <SectionHeader icon={MessageSquare} eyebrow="Trao đổi" title="Phòng trò chuyện chung Trung đội" />
+
+      {pinWarn && <FormWarning message={pinWarn} />}
 
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
         <FormWarning message={warn} />
@@ -4403,8 +4449,8 @@ function BoardTab({ user, perm }) {
 
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có bài đăng nào." /> : (
         <div className="space-y-3">
-          {items.map((p) => (
-            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === p.id)}>
+          {sortedPosts.map((p) => (
+            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff", borderLeft: p.pinned ? `4px solid ${T.amber}` : "none" }, selectedId === p.id)}>
               {editingPostId === p.id ? (
                 <div onClick={(e) => e.stopPropagation()}>
                   <div className="f-display font-semibold text-sm mb-1.5" style={{ color: T.green }}>{p.author}</div>
@@ -4432,7 +4478,14 @@ function BoardTab({ user, perm }) {
               ) : (
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
+                    {p.pinned && (
+                      <span className="f-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 inline-flex items-center gap-1 mb-1" style={{ background: T.amber, color: T.greenDark }}>
+                        <Pin size={11} /> Ghim #{pinRank[p.id]}
+                      </span>
+                    )}
+                    <div className="f-display font-semibold text-sm" style={{ color: T.green }}>
+                      {p.author}
+                    </div>
                     <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{p.content}</p>
                     {p.url && (
                       isImage(p.url) ? (
@@ -4452,12 +4505,15 @@ function BoardTab({ user, perm }) {
                       {new Date(p.date).toLocaleString("vi-VN")}{p.editedAt ? " · đã chỉnh sửa" : ""}
                     </div>
                   </div>
-                  {(perm.canManage || perm.isOwner(p.author)) && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      {perm.isOwner(p.author) && <button onClick={(e) => startEditPost(p, e)} title="Sửa"><Pencil size={13} style={{ color: T.inkSoft }} /></button>}
-                      <button onClick={(e) => { e.stopPropagation(); remove(p.id); }} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {perm.canManage && <button onClick={(e) => togglePin(p.id, e)} title={p.pinned ? "Bỏ ghim" : "Ghim tin nhắn quan trọng"}><Star size={14} fill={p.pinned ? T.amberDark : "none"} style={{ color: p.pinned ? T.amberDark : "#C9BFA5", filter: p.pinned ? `drop-shadow(0 0 4px ${T.amber})` : "none", transition: "all .15s" }} /></button>}
+                    {(perm.canManage || perm.isOwner(p.author)) && (
+                      <>
+                        {perm.isOwner(p.author) && <button onClick={(e) => startEditPost(p, e)} title="Sửa"><Pencil size={13} style={{ color: T.inkSoft }} /></button>}
+                        <button onClick={(e) => { e.stopPropagation(); remove(p.id); }} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
