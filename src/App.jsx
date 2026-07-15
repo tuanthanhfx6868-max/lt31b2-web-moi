@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef } from "react";
-import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock, Eye, EyeOff, Upload, FileSpreadsheet } from "lucide-react";
+import { Shield, Users, CalendarDays, FolderOpen, Award, Wallet, MessageSquare, LogOut, Pin, Plus, Trash2, Star, ChevronRight, Loader2, X, DoorOpen, ClipboardCheck, CheckCircle2, Circle, Paperclip, MapPin, Image as ImageIcon, Menu, Heart, KeyRound, Pencil, Search, Lock, Unlock, Eye, EyeOff, Upload, FileSpreadsheet, Download } from "lucide-react";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import crest from "./assets/crest.png";
@@ -2054,9 +2054,14 @@ function StudyAppendixSection({ user, perm, loading, allItems, setAllItems, type
                   {viewEntry.note && <div className="f-body text-xs mt-1" style={{ color: T.inkSoft }}>{viewEntry.note}</div>}
                   {viewEntry.url && (
                     isImage(viewEntry.url) ? (
-                      <a href={viewEntry.url} target="_blank" rel="noreferrer" className="block mt-2">
-                        <img src={viewEntry.url} alt={viewEntry.title} className="max-w-full sm:max-w-xs max-h-64 stamp-border" />
-                      </a>
+                      <div className="mt-2">
+                        <a href={viewEntry.url} target="_blank" rel="noreferrer" className="block">
+                          <img src={viewEntry.url} alt={viewEntry.title} className="max-w-full sm:max-w-xs max-h-64 stamp-border" />
+                        </a>
+                        <a href={viewEntry.url} download target="_blank" rel="noreferrer" className="f-mono text-[11px] underline inline-flex items-center gap-1 mt-1.5" style={{ color: T.green }}>
+                          <Download size={11} /> Tải ảnh về máy
+                        </a>
+                      </div>
                     ) : (
                       <a href={viewEntry.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-2 inline-flex items-center gap-1" style={{ color: T.green }}>
                         <Paperclip size={12} /> Xem file phụ lục
@@ -4207,6 +4212,49 @@ function BoardTab({ user, perm }) {
   const [selectedId, setSelectedId] = useState(null);
   const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
+  // ---- Sửa / xoá bài đăng của chính mình ----
+  const [editingPostId, setEditingPostId] = useState(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editPostUrl, setEditPostUrl] = useState("");
+  const startEditPost = (p, e) => { e.stopPropagation(); setEditingPostId(p.id); setEditPostContent(p.content || ""); setEditPostUrl(p.url || ""); };
+  const cancelEditPost = (e) => { e?.stopPropagation(); setEditingPostId(null); setEditPostContent(""); setEditPostUrl(""); };
+  const saveEditPost = async (id, e) => {
+    e.stopPropagation();
+    if (!editPostContent.trim() && !editPostUrl) return;
+    await setItems(items.map((p) => p.id === id ? { ...p, content: editPostContent, url: editPostUrl, editedAt: new Date().toISOString() } : p));
+    setEditingPostId(null);
+    setEditPostContent("");
+    setEditPostUrl("");
+  };
+
+  // ---- Sửa / xoá trả lời của chính mình ----
+  const [editingReply, setEditingReply] = useState(null); // { postId, idx }
+  const [editReplyContent, setEditReplyContent] = useState("");
+  const [editReplyUrl, setEditReplyUrl] = useState("");
+  const startEditReply = (postId, idx, r, e) => { e.stopPropagation(); setEditingReply({ postId, idx }); setEditReplyContent(r.content || ""); setEditReplyUrl(r.url || ""); };
+  const cancelEditReply = (e) => { e?.stopPropagation(); setEditingReply(null); setEditReplyContent(""); setEditReplyUrl(""); };
+  const saveEditReply = async (e) => {
+    e.stopPropagation();
+    if (!editingReply) return;
+    const { postId, idx } = editingReply;
+    if (!editReplyContent.trim() && !editReplyUrl) return;
+    await setItems(items.map((p) => p.id === postId ? { ...p, replies: p.replies.map((r, i) => i === idx ? { ...r, content: editReplyContent, url: editReplyUrl, editedAt: new Date().toISOString() } : r) } : p));
+    setEditingReply(null);
+    setEditReplyContent("");
+    setEditReplyUrl("");
+  };
+  const deleteReply = async (postId, idx, e) => {
+    e.stopPropagation();
+    await setItems(items.map((p) => p.id === postId ? { ...p, replies: p.replies.filter((_, i) => i !== idx) } : p));
+  };
+
+  // Link tải ảnh về máy/thư viện ảnh — bấm giữ hoặc bấm là tải/lưu được ngay.
+  const DownloadLink = ({ url, label = "Tải ảnh về máy", size = 11, className = "" }) => (
+    <a href={url} download target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`f-mono underline inline-flex items-center gap-1 ${className}`} style={{ color: T.green, fontSize: size + 1 }}>
+      <Download size={size} /> {label}
+    </a>
+  );
+
   return (
     <div>
       <SectionHeader icon={MessageSquare} eyebrow="Trao đổi" title="Phòng trò chuyện chung Trung đội" />
@@ -4234,25 +4282,61 @@ function BoardTab({ user, perm }) {
         <div className="space-y-3">
           {items.map((p) => (
             <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === p.id)}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
-                  <p className="f-body text-sm mt-1" style={{ color: T.ink }}>{p.content}</p>
-                  {p.url && (
-                    isImage(p.url) ? (
-                      <a href={p.url} target="_blank" rel="noreferrer" className="block mt-2">
-                        <img src={p.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
-                      </a>
-                    ) : (
-                      <a href={p.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
-                        <Paperclip size={12} /> Xem file đính kèm
-                      </a>
-                    )
-                  )}
-                  <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>{new Date(p.date).toLocaleString("vi-VN")}</div>
+              {editingPostId === p.id ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <div className="f-display font-semibold text-sm mb-1.5" style={{ color: T.green }}>{p.author}</div>
+                  <textarea rows={2} className={inputCls} style={inputStyle} value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} placeholder="Nội dung…" />
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                    <UploadField onUploaded={setEditPostUrl} />
+                    {editPostUrl && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isImage(editPostUrl) ? (
+                          <img src={editPostUrl} alt="Đính kèm" className="max-w-[120px] max-h-24 stamp-border" />
+                        ) : (
+                          <a href={editPostUrl} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                            <Paperclip size={11} /> Xem file
+                          </a>
+                        )}
+                        <button onClick={() => setEditPostUrl("")} title="Bỏ đính kèm"><X size={13} style={{ color: T.red }} /></button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Btn onClick={(e) => saveEditPost(p.id, e)}>Lưu</Btn>
+                    <button className="f-mono text-xs uppercase tracking-wider" style={{ color: T.inkSoft }} onClick={cancelEditPost}>Huỷ</button>
+                  </div>
                 </div>
-                {(perm.canManage || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-              </div>
+              ) : (
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
+                    <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{p.content}</p>
+                    {p.url && (
+                      isImage(p.url) ? (
+                        <div className="mt-2">
+                          <a href={p.url} target="_blank" rel="noreferrer" className="block" onClick={(e) => e.stopPropagation()}>
+                            <img src={p.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
+                          </a>
+                          <DownloadLink url={p.url} className="mt-1" />
+                        </div>
+                      ) : (
+                        <a href={p.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={12} /> Xem file đính kèm
+                        </a>
+                      )
+                    )}
+                    <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
+                      {new Date(p.date).toLocaleString("vi-VN")}{p.editedAt ? " · đã chỉnh sửa" : ""}
+                    </div>
+                  </div>
+                  {(perm.canManage || perm.isOwner(p.author)) && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {perm.isOwner(p.author) && <button onClick={(e) => startEditPost(p, e)} title="Sửa"><Pencil size={13} style={{ color: T.inkSoft }} /></button>}
+                      <button onClick={(e) => { e.stopPropagation(); remove(p.id); }} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
 
@@ -4260,18 +4344,58 @@ function BoardTab({ user, perm }) {
                 <div className="mt-3 ml-4 pl-3 space-y-2 overflow-y-auto" style={{ borderLeft: `2px solid ${T.paperDark}`, maxHeight: p.replies.length > 10 ? 320 : "none" }}>
                   {p.replies.map((r, idx) => (
                     <div key={idx}>
-                      <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
-                      <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
-                      {r.url && (
-                        isImage(r.url) ? (
-                          <a href={r.url} target="_blank" rel="noreferrer" className="block mt-1.5">
-                            <img src={r.url} alt="Đính kèm" className="max-w-[160px] max-h-36 stamp-border" />
-                          </a>
-                        ) : (
-                          <a href={r.url} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all mt-1 ml-2 inline-flex items-center gap-1" style={{ color: T.green }}>
-                            <Paperclip size={11} /> Xem file đính kèm
-                          </a>
-                        )
+                      {editingReply && editingReply.postId === p.id && editingReply.idx === idx ? (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
+                          <input className={inputCls} style={{ ...inputStyle, marginTop: 4 }} value={editReplyContent} onChange={(e) => setEditReplyContent(e.target.value)} placeholder="Trả lời…" />
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <UploadField onUploaded={setEditReplyUrl} />
+                            {editReplyUrl && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {isImage(editReplyUrl) ? (
+                                  <img src={editReplyUrl} alt="Đính kèm" className="max-w-[100px] max-h-20 stamp-border" />
+                                ) : (
+                                  <a href={editReplyUrl} target="_blank" rel="noreferrer" className="f-mono text-[10px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                                    <Paperclip size={10} /> Xem file
+                                  </a>
+                                )}
+                                <button onClick={() => setEditReplyUrl("")} title="Bỏ đính kèm"><X size={12} style={{ color: T.red }} /></button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <Btn onClick={saveEditReply}>Lưu</Btn>
+                            <button className="f-mono text-[10.5px] uppercase tracking-wider" style={{ color: T.inkSoft }} onClick={cancelEditReply}>Huỷ</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
+                            <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                            {r.editedAt && <span className="f-mono text-[9.5px] ml-1.5" style={{ color: T.inkSoft }}>(đã sửa)</span>}
+                            {r.url && (
+                              isImage(r.url) ? (
+                                <div className="mt-1.5">
+                                  <a href={r.url} target="_blank" rel="noreferrer" className="block" onClick={(e) => e.stopPropagation()}>
+                                    <img src={r.url} alt="Đính kèm" className="max-w-[160px] max-h-36 stamp-border" />
+                                  </a>
+                                  <DownloadLink url={r.url} size={10} className="mt-1" />
+                                </div>
+                              ) : (
+                                <a href={r.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="f-mono text-[10.5px] underline break-all mt-1 ml-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                                  <Paperclip size={11} /> Xem file đính kèm
+                                </a>
+                              )
+                            )}
+                          </div>
+                          {(perm.canManage || perm.isOwner(r.author)) && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {perm.isOwner(r.author) && <button onClick={(e) => startEditReply(p.id, idx, r, e)} title="Sửa"><Pencil size={11} style={{ color: T.inkSoft }} /></button>}
+                              <button onClick={(e) => deleteReply(p.id, idx, e)} title="Xoá"><Trash2 size={12} style={{ color: T.red }} /></button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -4300,7 +4424,7 @@ function BoardTab({ user, perm }) {
                   )}
                 </div>
               ) : (
-                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); setReplyAttachUrl(""); }}>Trả lời</button>
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={(e) => { e.stopPropagation(); setReplyOpen(p.id); setReplyWarn(""); setReplyAttachUrl(""); }}>Trả lời</button>
               )}
             </div>
           ))}
