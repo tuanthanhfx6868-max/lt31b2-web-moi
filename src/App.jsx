@@ -923,6 +923,20 @@ function AnnouncementsTab({ user, perm }) {
   const [selectedId, setSelectedId] = useState(null);
   const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
+  // ---- Sửa thông báo (chỉ huy) ----
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ title: "", body: "", url: "" });
+  const [editWarn, setEditWarn] = useState("");
+  const startEdit = (a, e) => { e.stopPropagation(); setEditingId(a.id); setEditForm({ title: a.title || "", body: a.body || "", url: a.url || "" }); setEditWarn(""); };
+  const cancelEdit = (e) => { e?.stopPropagation(); setEditingId(null); setEditWarn(""); };
+  const saveEdit = async (id, e) => {
+    e.stopPropagation();
+    if (!editForm.title.trim()) { setEditWarn("Vui lòng nhập Tiêu đề trước khi lưu."); return; }
+    setEditWarn("");
+    await setItems(items.map((i) => (i.id === id ? { ...i, title: editForm.title, body: editForm.body, url: editForm.url, editedAt: new Date().toISOString() } : i)));
+    setEditingId(null);
+  };
+
   const sorted = [...items].sort((a, b) => (b.pinned - a.pinned) || (new Date(b.date) - new Date(a.date)));
 
   return (
@@ -980,6 +994,33 @@ function AnnouncementsTab({ user, perm }) {
               style={withSelect({ background: "#fff", borderLeft: `4px solid ${a.pinned ? T.amber : T.green}` }, selectedId === a.id)}
             >
               <div className="flex items-start justify-between gap-3">
+                {editingId === a.id ? (
+                  <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+                    <FormWarning message={editWarn} />
+                    <Field label="Tiêu đề" required><input className={inputCls} style={inputStyle} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} /></Field>
+                    <Field label="Nội dung"><textarea rows={3} className={inputCls} style={inputStyle} value={editForm.body} onChange={(e) => setEditForm({ ...editForm, body: e.target.value })} /></Field>
+                    <Field label="Đính kèm ảnh/file hoặc link (không bắt buộc)">
+                      <input className={inputCls} style={inputStyle} value={editForm.url} onChange={(e) => setEditForm({ ...editForm, url: e.target.value })} placeholder="https://…" />
+                      <UploadField onUploaded={(url) => setEditForm((f) => ({ ...f, url }))} />
+                      {editForm.url && (
+                        <div className="mt-2 flex items-center gap-2 flex-wrap">
+                          {isImage(editForm.url) ? (
+                            <img src={editForm.url} alt="Đính kèm" className="max-w-[140px] max-h-28 stamp-border" />
+                          ) : (
+                            <a href={editForm.url} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                              <Paperclip size={12} /> Xem file/link vừa nhập
+                            </a>
+                          )}
+                          <button onClick={() => setEditForm((f) => ({ ...f, url: "" }))} title="Bỏ đính kèm"><X size={14} style={{ color: T.red }} /></button>
+                        </div>
+                      )}
+                    </Field>
+                    <div className="flex items-center gap-2">
+                      <Btn onClick={(e) => saveEdit(a.id, e)}>Lưu thay đổi</Btn>
+                      <button className="f-mono text-xs uppercase tracking-wider" style={{ color: T.inkSoft }} onClick={cancelEdit}>Huỷ</button>
+                    </div>
+                  </div>
+                ) : (
                 <div>
                   <div className="flex items-center gap-2">
                     {a.pinned && <Pin size={14} style={{ color: T.amberDark }} />}
@@ -1007,13 +1048,19 @@ function AnnouncementsTab({ user, perm }) {
                       </div>
                     )
                   )}
-                  <div className="f-mono text-[11px] mt-2" style={{ color: T.inkSoft }}>{a.author} · {new Date(a.date).toLocaleString("vi-VN")}</div>
+                  <div className="f-mono text-[11px] mt-2" style={{ color: T.inkSoft }}>
+                    {a.author} · {new Date(a.date).toLocaleString("vi-VN")}{a.editedAt ? " · đã chỉnh sửa" : ""}
+                  </div>
                   <ReactionBar reactions={a.reactions} user={user} onToggle={() => toggleReaction(a.id)} />
                 </div>
+                )}
+                {editingId !== a.id && (
                 <div className="flex gap-2 shrink-0">
                   {perm.canManage && <button onClick={() => togglePin(a.id)} title="Ghim"><Star size={16} style={{ color: a.pinned ? T.amberDark : "#C9BFA5" }} /></button>}
+                  {perm.canManage && <button onClick={(e) => startEdit(a, e)} title="Sửa"><Pencil size={16} style={{ color: T.green }} /></button>}
                   {canDelete(a) && <button onClick={() => remove(a.id)} title="Xoá"><Trash2 size={16} style={{ color: T.red }} /></button>}
                 </div>
+                )}
               </div>
             </div>
           ))}
