@@ -4633,10 +4633,13 @@ function BoardTab({ user, perm }) {
 function CommandChatTab({ user, perm }) {
   const { items, setItems, loading } = useSharedList("commandChat");
   const [content, setContent] = useState("");
+  const [attachUrl, setAttachUrl] = useState("");
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [replyAttachUrl, setReplyAttachUrl] = useState("");
   const [warn, setWarn] = useState("");
   const [replyWarn, setReplyWarn] = useState("");
+  const isImage = (u) => /\.(png|jpe?g|gif|webp)$/i.test(u || "");
 
   // Chốt chặn an toàn: dù có cách nào chuyển được vào tab này, không có quyền thì cũng không thấy nội dung
   if (!perm.canAccessCommandChat) {
@@ -4654,17 +4657,19 @@ function CommandChatTab({ user, perm }) {
   }
 
   const post = async () => {
-    if (!content.trim()) { setWarn("Vui lòng nhập nội dung trước khi đăng."); return; }
+    if (!content.trim() && !attachUrl) { setWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi đăng."); return; }
     setWarn("");
-    await setItems([{ id: Date.now(), author: user, content, date: new Date().toISOString(), replies: [] }, ...items]);
+    await setItems([{ id: Date.now(), author: user, content, url: attachUrl, date: new Date().toISOString(), replies: [] }, ...items]);
     setContent("");
+    setAttachUrl("");
   };
   const remove = async (id) => setItems(items.filter((i) => i.id !== id));
   const reply = async (id) => {
-    if (!replyText.trim()) { setReplyWarn("Vui lòng nhập nội dung trả lời trước khi gửi."); return; }
+    if (!replyText.trim() && !replyAttachUrl) { setReplyWarn("Vui lòng nhập nội dung hoặc đính kèm ảnh/file trước khi gửi."); return; }
     setReplyWarn("");
-    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, date: new Date().toISOString() }] } : p));
+    await setItems(items.map((p) => p.id === id ? { ...p, replies: [...p.replies, { author: user, content: replyText, url: replyAttachUrl, date: new Date().toISOString() }] } : p));
     setReplyText("");
+    setReplyAttachUrl("");
     setReplyOpen(null);
   };
   const toggleReaction = async (id) => setItems(items.map((p) => {
@@ -4676,6 +4681,75 @@ function CommandChatTab({ user, perm }) {
   const [selectedId, setSelectedId] = useState(null);
   const toggleSelect = (id) => setSelectedId((s) => (s === id ? null : id));
 
+  // ---- Ghim tin nhắn quan trọng (tối đa 10, dành cho chỉ huy) ----
+  const [pinWarn, setPinWarn] = useState("");
+  const togglePin = async (id, e) => {
+    e.stopPropagation();
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    if (!target.pinned && items.filter((i) => i.pinned).length >= 10) {
+      setPinWarn("Chỉ được ghim tối đa 10 tin nhắn. Hãy bỏ ghim bớt trước khi ghim thêm.");
+      return;
+    }
+    setPinWarn("");
+    await setItems(items.map((i) => (i.id === id ? { ...i, pinned: !i.pinned, pinnedAt: !i.pinned ? Date.now() : null } : i)));
+  };
+  const [editingPostId, setEditingPostId] = useState(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editPostUrl, setEditPostUrl] = useState("");
+  const startEditPost = (p, e) => { e.stopPropagation(); setEditingPostId(p.id); setEditPostContent(p.content || ""); setEditPostUrl(p.url || ""); };
+  const cancelEditPost = (e) => { e?.stopPropagation(); setEditingPostId(null); setEditPostContent(""); setEditPostUrl(""); };
+  const saveEditPost = async (id, e) => {
+    e.stopPropagation();
+    if (!editPostContent.trim() && !editPostUrl) return;
+    await setItems(items.map((p) => p.id === id ? { ...p, content: editPostContent, url: editPostUrl, editedAt: new Date().toISOString() } : p));
+    setEditingPostId(null);
+    setEditPostContent("");
+    setEditPostUrl("");
+  };
+
+  // ---- Sửa / xoá trả lời của chính mình ----
+  const [editingReply, setEditingReply] = useState(null); // { postId, idx }
+  const [editReplyContent, setEditReplyContent] = useState("");
+  const [editReplyUrl, setEditReplyUrl] = useState("");
+  const startEditReply = (postId, idx, r, e) => { e.stopPropagation(); setEditingReply({ postId, idx }); setEditReplyContent(r.content || ""); setEditReplyUrl(r.url || ""); };
+  const cancelEditReply = (e) => { e?.stopPropagation(); setEditingReply(null); setEditReplyContent(""); setEditReplyUrl(""); };
+  const saveEditReply = async (e) => {
+    e.stopPropagation();
+    if (!editingReply) return;
+    const { postId, idx } = editingReply;
+    if (!editReplyContent.trim() && !editReplyUrl) return;
+    await setItems(items.map((p) => p.id === postId ? { ...p, replies: p.replies.map((r, i) => i === idx ? { ...r, content: editReplyContent, url: editReplyUrl, editedAt: new Date().toISOString() } : r) } : p));
+    setEditingReply(null);
+    setEditReplyContent("");
+    setEditReplyUrl("");
+  };
+  const deleteReply = async (postId, idx, e) => {
+    e.stopPropagation();
+    await setItems(items.map((p) => p.id === postId ? { ...p, replies: p.replies.filter((_, i) => i !== idx) } : p));
+  };
+
+  // Link tải ảnh về máy/thư viện ảnh — bấm là tải/lưu ảnh thật sự về máy, giống Zalo.
+  const DownloadLink = ({ url, label = "Tải ảnh về máy", size = 11, className = "" }) => (
+    <a
+      href={url}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); forceDownload(url); }}
+      className={`f-mono underline inline-flex items-center gap-1 cursor-pointer ${className}`}
+      style={{ color: T.green, fontSize: size + 1 }}
+    >
+      <Download size={size} /> {label}
+    </a>
+  );
+
+  const sortedPosts = [...items].sort((a, b) => {
+    const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+    if (pinDiff !== 0) return pinDiff;
+    if (a.pinned && b.pinned) return (a.pinnedAt || 0) - (b.pinnedAt || 0);
+    return 0;
+  });
+  const pinRank = {};
+  sortedPosts.filter((p) => p.pinned).forEach((p, idx) => { pinRank[p.id] = idx + 1; });
+
   return (
     <div>
       <SectionHeader icon={Lock} eyebrow="Riêng chỉ huy" title="Phòng trò chuyện chỉ huy" />
@@ -4685,33 +4759,154 @@ function CommandChatTab({ user, perm }) {
         Chỉ Trung đội trưởng, Trung đội phó, Tiểu đội trưởng, Tiểu đội phó và Quản trị mới xem và trao đổi được ở đây.
       </div>
 
+      {pinWarn && <FormWarning message={pinWarn} />}
+
       <div className="stamp-border p-4 mb-5" style={{ background: "#fff" }}>
         <FormWarning message={warn} />
         <textarea rows={2} className={inputCls} style={inputStyle} placeholder="Trao đổi riêng với chỉ huy…" value={content} onChange={(e) => setContent(e.target.value)} />
+        <UploadField onUploaded={setAttachUrl} />
+        {attachUrl && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {isImage(attachUrl) ? (
+              <img src={attachUrl} alt="Đính kèm" className="max-w-[140px] max-h-28 stamp-border" />
+            ) : (
+              <a href={attachUrl} target="_blank" rel="noreferrer" className="f-mono text-xs underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                <Paperclip size={12} /> Xem file vừa tải lên
+              </a>
+            )}
+            <button onClick={() => setAttachUrl("")} title="Bỏ đính kèm"><X size={14} style={{ color: T.red }} /></button>
+          </div>
+        )}
         <div className="mt-2"><Btn onClick={post}>Đăng</Btn></div>
       </div>
 
       {loading ? <LoadingRow /> : items.length === 0 ? <EmptyState text="Chưa có nội dung trao đổi nào." /> : (
         <div className="space-y-3">
-          {items.map((p) => (
-            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff" }, selectedId === p.id)}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
-                  <p className="f-body text-sm mt-1" style={{ color: T.ink }}>{p.content}</p>
-                  <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>{new Date(p.date).toLocaleString("vi-VN")}</div>
+          {sortedPosts.map((p) => (
+            <div key={p.id} onClick={() => toggleSelect(p.id)} className="p-4 cursor-pointer" style={withSelect({ background: "#fff", borderLeft: p.pinned ? `4px solid ${T.amber}` : "none" }, selectedId === p.id)}>
+              {editingPostId === p.id ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <div className="f-display font-semibold text-sm mb-1.5" style={{ color: T.green }}>{p.author}</div>
+                  <textarea rows={2} className={inputCls} style={inputStyle} value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} placeholder="Nội dung…" />
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                    <UploadField onUploaded={setEditPostUrl} />
+                    {editPostUrl && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isImage(editPostUrl) ? (
+                          <img src={editPostUrl} alt="Đính kèm" className="max-w-[120px] max-h-24 stamp-border" />
+                        ) : (
+                          <a href={editPostUrl} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                            <Paperclip size={11} /> Xem file
+                          </a>
+                        )}
+                        <button onClick={() => setEditPostUrl("")} title="Bỏ đính kèm"><X size={13} style={{ color: T.red }} /></button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Btn onClick={(e) => saveEditPost(p.id, e)}>Lưu</Btn>
+                    <button className="f-mono text-xs uppercase tracking-wider" style={{ color: T.inkSoft }} onClick={cancelEditPost}>Huỷ</button>
+                  </div>
                 </div>
-                {(perm.isAdmin || perm.isOwner(p.author)) && <button onClick={() => remove(p.id)}><Trash2 size={14} style={{ color: T.red }} /></button>}
-              </div>
+              ) : (
+                <div className="flex justify-between items-start">
+                  <div>
+                    {p.pinned && (
+                      <span className="f-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 inline-flex items-center gap-1 mb-1" style={{ background: T.amber, color: T.greenDark }}>
+                        <Pin size={11} /> Ghim #{pinRank[p.id]}
+                      </span>
+                    )}
+                    <div className="f-display font-semibold text-sm" style={{ color: T.green }}>{p.author}</div>
+                    <p className="f-body text-sm mt-1 whitespace-pre-wrap" style={{ color: T.ink }}>{p.content}</p>
+                    {p.url && (
+                      isImage(p.url) ? (
+                        <div className="mt-2">
+                          <a href={p.url} target="_blank" rel="noreferrer" className="block" onClick={(e) => e.stopPropagation()}>
+                            <img src={p.url} alt="Đính kèm" className="max-w-[220px] max-h-48 stamp-border" />
+                          </a>
+                          <DownloadLink url={p.url} className="mt-1" />
+                        </div>
+                      ) : (
+                        <a href={p.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="f-mono text-xs underline break-all mt-1 inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={12} /> Xem file đính kèm
+                        </a>
+                      )
+                    )}
+                    <div className="f-mono text-[11px] mt-1" style={{ color: T.inkSoft }}>
+                      {new Date(p.date).toLocaleString("vi-VN")}{p.editedAt ? " · đã chỉnh sửa" : ""}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {perm.canManage && <button onClick={(e) => togglePin(p.id, e)} title={p.pinned ? "Bỏ ghim" : "Ghim tin nhắn quan trọng"}><Star size={14} fill={p.pinned ? T.amberDark : "none"} style={{ color: p.pinned ? T.amberDark : "#C9BFA5", filter: p.pinned ? `drop-shadow(0 0 4px ${T.amber})` : "none", transition: "all .15s" }} /></button>}
+                    {(perm.isAdmin || perm.isOwner(p.author)) && (
+                      <>
+                        {perm.isOwner(p.author) && <button onClick={(e) => startEditPost(p, e)} title="Sửa"><Pencil size={13} style={{ color: T.inkSoft }} /></button>}
+                        <button onClick={(e) => { e.stopPropagation(); remove(p.id); }} title="Xoá"><Trash2 size={14} style={{ color: T.red }} /></button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <ReactionBar reactions={p.reactions} user={user} onToggle={() => toggleReaction(p.id)} />
 
               {p.replies.length > 0 && (
-                <div className="mt-3 ml-4 pl-3 space-y-2" style={{ borderLeft: `2px solid ${T.paperDark}` }}>
+                <div className="mt-3 ml-4 pl-3 space-y-2 overflow-y-auto" style={{ borderLeft: `2px solid ${T.paperDark}`, maxHeight: p.replies.length > 10 ? 320 : "none" }}>
                   {p.replies.map((r, idx) => (
                     <div key={idx}>
-                      <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
-                      <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                      {editingReply && editingReply.postId === p.id && editingReply.idx === idx ? (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
+                          <input className={inputCls} style={{ ...inputStyle, marginTop: 4 }} value={editReplyContent} onChange={(e) => setEditReplyContent(e.target.value)} placeholder="Trả lời…" />
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <UploadField onUploaded={setEditReplyUrl} />
+                            {editReplyUrl && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {isImage(editReplyUrl) ? (
+                                  <img src={editReplyUrl} alt="Đính kèm" className="max-w-[100px] max-h-20 stamp-border" />
+                                ) : (
+                                  <a href={editReplyUrl} target="_blank" rel="noreferrer" className="f-mono text-[10px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                                    <Paperclip size={10} /> Xem file
+                                  </a>
+                                )}
+                                <button onClick={() => setEditReplyUrl("")} title="Bỏ đính kèm"><X size={12} style={{ color: T.red }} /></button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <Btn onClick={saveEditReply}>Lưu</Btn>
+                            <button className="f-mono text-[10.5px] uppercase tracking-wider" style={{ color: T.inkSoft }} onClick={cancelEditReply}>Huỷ</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="f-display text-xs font-semibold" style={{ color: T.amberDark }}>{r.author}</span>
+                            <span className="f-body text-xs ml-2" style={{ color: T.ink }}>{r.content}</span>
+                            {r.editedAt && <span className="f-mono text-[9.5px] ml-1.5" style={{ color: T.inkSoft }}>(đã sửa)</span>}
+                            {r.url && (
+                              isImage(r.url) ? (
+                                <div className="mt-1.5">
+                                  <a href={r.url} target="_blank" rel="noreferrer" className="block" onClick={(e) => e.stopPropagation()}>
+                                    <img src={r.url} alt="Đính kèm" className="max-w-[160px] max-h-36 stamp-border" />
+                                  </a>
+                                  <DownloadLink url={r.url} size={10} className="mt-1" />
+                                </div>
+                              ) : (
+                                <a href={r.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="f-mono text-[10.5px] underline break-all mt-1 ml-2 inline-flex items-center gap-1" style={{ color: T.green }}>
+                                  <Paperclip size={11} /> Xem file đính kèm
+                                </a>
+                              )
+                            )}
+                          </div>
+                          {(perm.isAdmin || perm.isOwner(r.author)) && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {perm.isOwner(r.author) && <button onClick={(e) => startEditReply(p.id, idx, r, e)} title="Sửa"><Pencil size={11} style={{ color: T.inkSoft }} /></button>}
+                              <button onClick={(e) => deleteReply(p.id, idx, e)} title="Xoá"><Trash2 size={12} style={{ color: T.red }} /></button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -4724,9 +4919,22 @@ function CommandChatTab({ user, perm }) {
                     <input className={inputCls} style={inputStyle} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Trả lời…" />
                     <Btn onClick={() => reply(p.id)}>Gửi</Btn>
                   </div>
+                  <UploadField onUploaded={setReplyAttachUrl} />
+                  {replyAttachUrl && (
+                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                      {isImage(replyAttachUrl) ? (
+                        <img src={replyAttachUrl} alt="Đính kèm" className="max-w-[120px] max-h-24 stamp-border" />
+                      ) : (
+                        <a href={replyAttachUrl} target="_blank" rel="noreferrer" className="f-mono text-[10.5px] underline break-all inline-flex items-center gap-1" style={{ color: T.green }}>
+                          <Paperclip size={11} /> Xem file vừa tải lên
+                        </a>
+                      )}
+                      <button onClick={() => setReplyAttachUrl("")} title="Bỏ đính kèm"><X size={13} style={{ color: T.red }} /></button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={() => { setReplyOpen(p.id); setReplyWarn(""); }}>Trả lời</button>
+                <button className="f-mono text-xs mt-2 uppercase tracking-wider" style={{ color: T.green }} onClick={(e) => { e.stopPropagation(); setReplyOpen(p.id); setReplyWarn(""); setReplyAttachUrl(""); }}>Trả lời</button>
               )}
             </div>
           ))}
